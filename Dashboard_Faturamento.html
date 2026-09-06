@@ -1,0 +1,1297 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Gerencial de Faturamento</title>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root{
+  --navy:#002B5C;
+  --navy-700:#0A3B70;
+  --navy-100:#E6EDF4;
+  --green:#92D050;
+  --green-dark:#6FA834;
+  --info-blue:#2E7BC4;
+  --primary:var(--navy);
+  --primary-2:var(--navy-700);
+  --accent:var(--info-blue);
+  --accent-2:var(--info-blue);
+  --bg:#eef1f5;
+  --surface:#ffffff;
+  --border:#dbe2ea;
+  --text:#1b2733;
+  --text-muted:#647184;
+  --ok:var(--green-dark);
+  --ok-bg:#eef7e3;
+  --warn:#a8710b;
+  --warn-bg:#fbf0dc;
+  --danger:#b3261e;
+  --danger-bg:#fbe6e4;
+  --radius:10px;
+  --shadow:0 1px 3px rgba(0,43,92,.08), 0 1px 2px rgba(0,43,92,.06);
+  --shadow-lg:0 10px 30px rgba(0,43,92,.18);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);font-family:"Segoe UI",Calibri,Arial,sans-serif;font-size:14px;}
+body{display:flex;flex-direction:column;height:100vh;overflow:hidden;}
+button{font-family:inherit;}
+
+/* ---------- BANNER "PAINEL DE CONFRONTO" ---------- */
+.confronto-banner{flex:0 0 auto;background:var(--navy);color:#fff;padding:12px 26px;}
+.confronto-banner-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--green);margin-bottom:4px;}
+.confronto-banner-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+.confronto-banner-title{font-size:26px;font-weight:800;letter-spacing:.02em;text-transform:uppercase;color:#fff;line-height:1.15;}
+.confronto-banner-switch{display:inline-flex;align-items:center;gap:6px;padding:9px 18px;border:1px solid rgba(255,255,255,.5);border-radius:999px;color:#fff;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;transition:background .15s,border-color .15s;}
+.confronto-banner-switch:hover{background:rgba(255,255,255,.12);border-color:#fff;}
+
+.app{display:flex;flex:1;min-height:0;width:100%;overflow:hidden;}
+
+/* ---------- SIDEBAR ---------- */
+.sidebar{width:230px;flex:0 0 230px;background:linear-gradient(180deg,var(--primary),var(--primary-2));color:#dbe6f0;display:flex;flex-direction:column;}
+.sidebar .brand{padding:20px 18px 14px;border-bottom:1px solid rgba(255,255,255,.12);}
+.sidebar .brand .title{font-size:15px;font-weight:700;color:#fff;line-height:1.3;}
+.sidebar .brand .subtitle{font-size:11px;color:#9fb4c9;margin-top:3px;}
+.nav{flex:1;overflow-y:auto;padding:10px 0;}
+.nav-item{display:flex;align-items:center;gap:10px;padding:11px 18px;cursor:pointer;font-size:13.5px;color:#c7d6e5;border-left:3px solid transparent;transition:background .15s;}
+.nav-item .ico{width:18px;text-align:center;font-size:14px;}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#fff;}
+.nav-item.active{background:rgba(255,255,255,.12);border-left-color:var(--accent-2);color:#fff;font-weight:600;}
+.sidebar-foot{padding:12px 18px;border-top:1px solid rgba(255,255,255,.12);font-size:10.5px;color:#8ea4ba;}
+
+/* ---------- MAIN ---------- */
+.main{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0;}
+.topbar{background:var(--surface);border-bottom:1px solid var(--border);padding:10px 22px;display:flex;flex-direction:column;gap:10px;}
+.topbar-row1{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+.page-title{font-size:18px;font-weight:700;color:var(--primary);}
+.page-title .last-update{display:block;font-size:11px;font-weight:400;color:var(--text-muted);margin-top:2px;}
+.actions{display:flex;gap:8px;flex-wrap:wrap;}
+.btn{border:1px solid var(--border);background:var(--surface);color:var(--text);padding:8px 14px;border-radius:8px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:.15s;}
+.btn:hover{background:#f2f5f8;}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+.btn-primary:hover{background:var(--accent-2);}
+.btn-outline{background:transparent;}
+.btn:disabled{opacity:.55;cursor:not-allowed;}
+
+.filters{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;padding-top:2px;}
+.filter-field{display:flex;flex-direction:column;gap:3px;min-width:150px;}
+.filter-field label{font-size:10.5px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;}
+.filter-field select{padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;background:#fff;color:var(--text);min-width:150px;}
+.filter-field select[multiple]{min-height:34px;}
+.filter-clear{align-self:flex-end;}
+.filter-summary{font-size:11.5px;color:var(--text-muted);padding-top:2px;}
+
+.ms-dropdown{position:relative;}
+.ms-toggle{width:100%;min-width:150px;text-align:left;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;background:#fff;color:var(--text);cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:6px;}
+.ms-toggle:hover{border-color:var(--accent);}
+.ms-arrow{font-size:10px;color:var(--text-muted);}
+.ms-panel{display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:100%;max-height:220px;overflow-y:auto;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);padding:6px;z-index:60;white-space:nowrap;}
+.ms-panel.open{display:block;}
+.ms-panel .ms-opt{display:flex;align-items:center;gap:6px;padding:4px 6px;font-size:12.5px;border-radius:5px;cursor:pointer;}
+.ms-panel .ms-opt:hover{background:var(--navy-100);}
+
+.auth-box{position:relative;display:inline-flex;align-items:center;}
+.login-form{position:absolute;top:calc(100% + 6px);right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow-lg);padding:12px;display:flex;flex-direction:column;gap:6px;width:220px;z-index:50;}
+.login-form input{padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:12.5px;}
+.login-error{font-size:11px;color:var(--danger);}
+.auth-status{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);}
+.auth-status #auth-user-email{font-weight:600;color:var(--primary);}
+
+/* ---------- PROGRESS PANEL ---------- */
+#progress-panel{display:none;background:#fff;border-bottom:1px solid var(--border);padding:14px 22px;}
+#progress-panel.show{display:block;}
+.progress-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.progress-head b{color:var(--primary);font-size:13px;}
+.progress-bar-track{height:8px;background:#e6ebf1;border-radius:5px;overflow:hidden;}
+.progress-bar-fill{height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .25s ease;}
+.log-box{margin-top:10px;max-height:150px;overflow-y:auto;background:#0f1720;color:#c9e2ff;font-family:Consolas,monospace;font-size:11.5px;border-radius:6px;padding:8px 10px;line-height:1.6;}
+.log-line{white-space:pre-wrap;}
+.log-line.err{color:#ff9b93;}
+.log-line.ok{color:#8fe3ac;}
+
+/* ---------- CONTENT ---------- */
+#content{flex:1;overflow-y:auto;padding:20px 22px 40px;}
+.panel{display:none;}
+.panel.active{display:block;}
+.panel h2{font-size:16px;color:var(--primary);margin:22px 0 12px;border-bottom:2px solid var(--border);padding-bottom:6px;}
+.panel h2:first-child{margin-top:0;}
+
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:8px;}
+.kpi-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow);}
+.kpi-card .label{font-size:11px;color:var(--text-muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em;}
+.kpi-card .value{font-size:21px;font-weight:800;color:var(--primary);margin-top:6px;}
+.kpi-card .sub{font-size:11.5px;color:var(--text-muted);margin-top:4px;}
+.kpi-card.accent{border-top:3px solid var(--accent);}
+.kpi-card.ok{border-top:3px solid var(--ok);}
+.kpi-card.warn{border-top:3px solid var(--warn);}
+
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;}
+@media(max-width:1100px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin-bottom:16px;}
+.card h3{font-size:13px;color:var(--primary);margin:0 0 10px;font-weight:700;}
+.chart-box{width:100%;min-height:320px;}
+.chart-box.small{min-height:230px;}
+
+table.dt{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.dt th{background:var(--primary);color:#fff;text-align:left;padding:8px 10px;font-weight:600;position:sticky;top:0;}
+table.dt td{padding:7px 10px;border-bottom:1px solid var(--border);}
+table.dt tr:nth-child(even) td{background:#f7f9fb;}
+table.dt tr:hover td{background:#eaf1f8;}
+.table-wrap{max-height:420px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
+
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:10.5px;font-weight:700;}
+.badge-a{background:#eef7e3;color:var(--green-dark);}
+.badge-b{background:#fbf0dc;color:#a8710b;}
+.badge-c{background:var(--navy-100);color:var(--navy-700);}
+.badge-ok{background:var(--ok-bg);color:var(--ok);}
+.badge-warn{background:var(--warn-bg);color:var(--warn);}
+.badge-danger{background:var(--danger-bg);color:var(--danger);}
+
+.conclusao-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px;}
+.conclusao-list li{background:var(--surface);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:12px 14px;font-size:13.5px;line-height:1.55;box-shadow:var(--shadow);}
+
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-muted);}
+.empty-state .big{font-size:40px;margin-bottom:10px;}
+
+.hint{font-size:11px;color:var(--text-muted);margin-top:4px;}
+.toast{position:fixed;bottom:20px;right:20px;background:var(--primary);color:#fff;padding:12px 18px;border-radius:8px;box-shadow:var(--shadow-lg);font-size:13px;z-index:999;max-width:360px;display:none;}
+.toast.show{display:block;}
+.toast.err{background:var(--danger);}
+
+@media print{
+  .confronto-banner,.sidebar,.topbar .actions,.filters,#progress-panel,.btn{display:none !important;}
+  .main{height:auto;}
+  #content{overflow:visible;padding:0 10px;}
+  .panel{display:block !important;page-break-after:always;}
+  body{background:#fff;}
+}
+</style>
+</head>
+<body>
+<div class="confronto-banner">
+  <div class="confronto-banner-label">Painel de Confronto &middot; Techint Engenharia e Constru&ccedil;&atilde;o</div>
+  <div class="confronto-banner-row">
+    <div class="confronto-banner-title">Painel de Faturamento</div>
+    <a class="confronto-banner-switch" href="https://clesiohenrique.github.io/Controle-Horas-Valores/">&#8617; Trocar de painel</a>
+  </div>
+</div>
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="title">Dashboard Gerencial</div>
+      <div class="subtitle">Faturamento &middot; Techint E&amp;C</div>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-panel="resumo"><span class="ico">&#9632;</span> Resumo Executivo</div>
+      <div class="nav-item" data-panel="financeira"><span class="ico">&#9776;</span> Analise Financeira</div>
+      <div class="nav-item" data-panel="abc"><span class="ico">&#9650;</span> Curva ABC</div>
+      <div class="nav-item" data-panel="operacional"><span class="ico">&#9881;</span> Analise Operacional</div>
+      <div class="nav-item" data-panel="faturamento"><span class="ico">&#36;</span> Faturamento</div>
+      <div class="nav-item" data-panel="alertas"><span class="ico">&#9888;</span> Alertas</div>
+      <div class="nav-item" data-panel="conclusao"><span class="ico">&#9998;</span> Conclusao Executiva</div>
+    </nav>
+    <div class="sidebar-foot">Base: <span id="foot-filename">nenhuma carregada</span></div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div class="topbar-row1">
+        <div class="page-title" id="page-title">Resumo Executivo
+          <span class="last-update" id="last-update">Nenhuma base carregada ainda.</span>
+        </div>
+        <div class="actions">
+          <div class="auth-box" id="auth-box">
+            <button class="btn btn-outline" id="btn-login-toggle">&#128274; Entrar</button>
+            <div class="login-form" id="login-form" style="display:none;">
+              <input type="email" id="login-email" placeholder="e-mail" autocomplete="username">
+              <input type="password" id="login-password" placeholder="senha" autocomplete="current-password">
+              <button class="btn btn-primary" id="btn-login-submit">Entrar</button>
+              <span class="login-error" id="login-error"></span>
+            </div>
+            <div class="auth-status" id="auth-status" style="display:none;">
+              <span id="auth-user-email"></span>
+              <button class="btn btn-outline" id="btn-logout">Sair</button>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-refresh">&#8635; Atualizar Base</button>
+          <button class="btn btn-outline" id="btn-export-excel">&#8615; Exportar Excel</button>
+          <button class="btn btn-outline" id="btn-export-pdf">&#8615; Exportar PDF</button>
+        </div>
+      </div>
+      <div class="filters" id="filters" style="display:none;">
+        <div class="filter-field">
+          <label>Projeto</label>
+          <div class="ms-dropdown" id="ms-projeto">
+            <button type="button" class="ms-toggle" id="ms-projeto-toggle">Todos <span class="ms-arrow">&#9662;</span></button>
+            <div class="ms-panel" id="ms-projeto-panel"></div>
+          </div>
+          <select id="f-projeto" multiple style="display:none;"></select>
+        </div>
+        <div class="filter-field">
+          <label>Contrato</label>
+          <div class="ms-dropdown" id="ms-contrato">
+            <button type="button" class="ms-toggle" id="ms-contrato-toggle">Todos <span class="ms-arrow">&#9662;</span></button>
+            <div class="ms-panel" id="ms-contrato-panel"></div>
+          </div>
+          <select id="f-contrato" multiple style="display:none;"></select>
+        </div>
+        <div class="filter-field">
+          <label>Fornecedor</label>
+          <div class="ms-dropdown" id="ms-fornecedor">
+            <button type="button" class="ms-toggle" id="ms-fornecedor-toggle">Todos <span class="ms-arrow">&#9662;</span></button>
+            <div class="ms-panel" id="ms-fornecedor-panel"></div>
+          </div>
+          <select id="f-fornecedor" multiple style="display:none;"></select>
+        </div>
+        <div class="filter-field">
+          <label>FAD / FIA / Rateio</label>
+          <select id="f-fadfiarat">
+            <option value="">Todos</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Mes/Ano de</label>
+          <select id="f-mesano-de">
+            <option value="">--</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Mes/Ano ate</label>
+          <select id="f-mesano-ate">
+            <option value="">--</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Faturado</label>
+          <select id="f-faturado">
+            <option value="">Todos</option>
+            <option value="Faturado">Faturado</option>
+            <option value="Nao faturado">Nao faturado</option>
+          </select>
+        </div>
+        <button class="btn btn-outline filter-clear" id="btn-clear-filters">Limpar filtros</button>
+        <div class="filter-summary" id="filter-summary"></div>
+      </div>
+    </div>
+
+    <div id="progress-panel">
+      <div class="progress-head"><b id="progress-title">Processando...</b><span id="progress-pct">0%</span></div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="progress-fill"></div></div>
+      <div class="log-box" id="log-box"></div>
+    </div>
+
+    <div id="content">
+
+      <section class="panel active" id="panel-resumo">
+        <div id="resumo-empty" class="empty-state">
+          <div class="big">&#128202;</div>
+          <div>Nenhuma base carregada. Clique em <b>Atualizar Base</b> para localizar e importar o arquivo<br><code>Banco_de_Dados_Faturamento.xlsx</code>.</div>
+        </div>
+        <div id="resumo-body" style="display:none;">
+          <div class="kpi-grid" id="kpi-grid"></div>
+          <div class="grid-2" style="margin-top:16px;">
+            <div class="card"><h3>Faturado vs Nao Faturado</h3><div id="chart-resumo-donut" class="chart-box small"></div></div>
+            <div class="card"><h3>FAD / FIA / Rateio &mdash; Total vs Faturado (R$ milhoes)</h3><div id="chart-resumo-fadfiarat" class="chart-box small"></div></div>
+          </div>
+          <div class="card" style="margin-top:16px;"><h3>Faturamento por Mes (R$ milhoes)</h3><div id="chart-resumo-mes" class="chart-box small"></div></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-financeira">
+        <h2>Top 15 Itens por Valor Avanco</h2>
+        <div class="card"><div id="chart-fin-item" class="chart-box"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-fin-item"></table></div></div>
+
+        <h2>Top 15 Fornecedores por Valor Avanco</h2>
+        <div class="card"><div id="chart-fin-forn" class="chart-box"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-fin-forn"></table></div></div>
+
+        <h2>Top 15 Contratos por Valor Avanco</h2>
+        <div class="card"><div id="chart-fin-contr" class="chart-box"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-fin-contr"></table></div></div>
+      </section>
+
+      <section class="panel" id="panel-abc">
+        <h2>Curva ABC por Item</h2>
+        <div class="kpi-grid" id="abc-item-summary"></div>
+        <div class="card"><div id="chart-abc-item" class="chart-box"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-abc-item"></table></div></div>
+
+        <h2>Curva ABC por Fornecedor</h2>
+        <div class="card"><div id="chart-abc-forn" class="chart-box small"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-abc-forn"></table></div></div>
+      </section>
+
+      <section class="panel" id="panel-operacional">
+        <h2>Resumo por Tipo</h2>
+        <div class="card"><div id="chart-op-tipo" class="chart-box"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-op-tipo"></table></div></div>
+
+        <h2>Resumo por FAD / FIA / Rateio</h2>
+        <div class="card"><div id="chart-op-fadfiarat" class="chart-box small"></div></div>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-op-fadfiarat"></table></div></div>
+
+        <div class="grid-2">
+          <div>
+            <h2>Resumo por Projeto</h2>
+            <div class="card"><div id="chart-op-proj" class="chart-box small"></div></div>
+            <div class="card"><div class="table-wrap"><table class="dt" id="tbl-op-proj"></table></div></div>
+          </div>
+          <div>
+            <h2>Resumo por Mes/Ano</h2>
+            <div class="card"><div id="chart-op-mes" class="chart-box small"></div></div>
+            <div class="card"><div class="table-wrap"><table class="dt" id="tbl-op-mes"></table></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-faturamento">
+        <h2>Visao Geral</h2>
+        <div class="kpi-grid" id="fat-summary"></div>
+        <div class="grid-2" style="margin-top:14px;">
+          <div class="card"><h3>Principais Itens Nao Faturados</h3><div class="table-wrap"><table class="dt" id="tbl-fat-item"></table></div></div>
+          <div class="card"><h3>Fornecedores com Saldo Nao Faturado</h3><div class="table-wrap"><table class="dt" id="tbl-fat-forn"></table></div></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-alertas">
+        <h2>Possiveis Duplicidades</h2>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-alert-dup"></table></div></div>
+
+        <h2>Valores Atipicos</h2>
+        <div class="card"><div class="table-wrap"><table class="dt" id="tbl-alert-out"></table></div></div>
+
+        <div class="grid-2">
+          <div>
+            <h2>Concentracao em Contratos</h2>
+            <div class="card"><div class="table-wrap"><table class="dt" id="tbl-alert-cc"></table></div></div>
+          </div>
+          <div>
+            <h2>Concentracao em Fornecedores</h2>
+            <div class="card"><div class="table-wrap"><table class="dt" id="tbl-alert-cf"></table></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-conclusao">
+        <h2>Conclusao Executiva</h2>
+        <ul class="conclusao-list" id="conclusao-list"></ul>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".xlsx" style="display:none;">
+<div class="toast" id="toast"></div>
+
+<script>
+window.__DASH_HTML_MARKER__ = true;
+</script>
+<script>
+/* ============================================================
+   Dashboard Gerencial de Faturamento — logica da aplicacao
+   ============================================================ */
+"use strict";
+
+/* ---------------- Constantes de coluna (letras da planilha) ----------------
+   Mapeamento confirmado: Contrato=D, Item=E, Valor Avanco=G, Mes/Ano=H,
+   Projeto=J, Fornecedor=O, Tipo=T, Faturado SIM ou NAO=U
+------------------------------------------------------------------------- */
+const COL = { contrato:3, item:4, valor:6, mesano:7, fadfiarat:8, projeto:9, fornecedor:14, tipo:19, faturado:20 };
+const SOURCE_FILENAME = 'Banco_de_Dados_Faturamento.xlsx';
+
+/* ---------------- Supabase (leitura publica, somente SELECT) ----------------
+   A chave abaixo eh a "anon key" do Supabase: publica por design, protegida por
+   Row Level Security (policies de SELECT apenas). Gravacoes na base exigem a
+   service_role key, usada apenas em um script local — nunca neste arquivo.
+------------------------------------------------------------------------- */
+const SUPABASE_URL = 'https://henuatkfajesczzjdilb.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhlbnVhdGtmYWplc2N6empkaWxiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgxNTQ4MjksImV4cCI6MjEwMzczMDgyOX0.hKKDxg9Hu9SFVTHjfphD8U_SKTollLUpncm7fZo7zjU';
+const supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+
+/* ---------------- Estado global ---------------- */
+const state = {
+  consolidado: [],       // linhas agregadas: {contrato,fornecedor,item,tipo,projeto,mesano,faturado,valor,qtd}
+  agg: null,             // agregados calculados sobre a base filtrada
+  lastUpdate: null,
+  fileName: null,
+  worker: null,
+  user: null            // usuario Supabase autenticado (null = deslogado)
+};
+window.__fsHandle = null;
+
+/* ---------------- Formatadores ---------------- */
+const fmtBRL = v => (v==null||isNaN(v)?'R$ 0,00':v.toLocaleString('pt-BR',{style:'currency',currency:'BRL'}));
+const fmtBRLM = v => (v==null||isNaN(v)?'R$ 0,0 M':'R$ '+(v/1e6).toLocaleString('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1})+' M');
+const fmtInt = v => (v==null||isNaN(v)?'0':Math.round(v).toLocaleString('pt-BR'));
+const fmtPct = v => (v==null||isNaN(v)?'0,00%':(v*100).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2})+'%');
+const fmtBytes = n => { if(n<1024) return n+' B'; if(n<1048576) return (n/1024).toFixed(1)+' KB'; return (n/1048576).toFixed(1)+' MB'; };
+const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ============================================================
+   WORKER — leitura e consolidacao do arquivo (thread separada)
+   ============================================================ */
+const WORKER_SRC = `
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+
+const COL = ${JSON.stringify(COL)};
+const FADFIARAT_LABEL = { FAD:'FAD', FIA:'FIA', RAT:'Rateio' };
+
+function cellText(sheet, r, c){
+  const addr = XLSX.utils.encode_cell({r:r,c:c});
+  const cell = sheet[addr];
+  if (!cell) return '';
+  if (cell.w !== undefined && cell.w !== null) return String(cell.w).trim();
+  return String(cell.v==null?'':cell.v).trim();
+}
+function cellNumber(sheet, r, c){
+  const addr = XLSX.utils.encode_cell({r:r,c:c});
+  const cell = sheet[addr];
+  if (!cell) return 0;
+  if (typeof cell.v === 'number') return cell.v;
+  const n = parseFloat(String(cell.v).replace(/\\\\./g,'').replace(',','.'));
+  return isNaN(n) ? 0 : n;
+}
+
+self.onmessage = function(ev){
+  try {
+    const { buffer, fileName } = ev.data;
+    post('log', 'Lendo arquivo binario (' + fileName + ')...');
+    post('progress', 8);
+    const wb = XLSX.read(buffer, { type:'array' });
+    post('log', 'Arquivo interpretado. ' + wb.SheetNames.length + ' planilha(s) encontrada(s): ' + wb.SheetNames.join(', '));
+    post('progress', 18);
+
+    const map = new Map();
+    let totalRows = 0, usedRows = 0;
+
+    wb.SheetNames.forEach(function(sheetName, sIdx){
+      const sheet = wb.Sheets[sheetName];
+      if (!sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia — ignorada.'); return; }
+      const range = XLSX.utils.decode_range(sheet['!ref']);
+      const headerRow = range.s.r;
+      const contratoHeader = cellText(sheet, headerRow, COL.contrato);
+      if (!contratoHeader) { post('log', 'Planilha "' + sheetName + '" nao possui cabecalho reconhecivel na coluna D — ignorada.'); return; }
+      post('log', 'Planilha "' + sheetName + '": ' + (range.e.r - range.s.r) + ' linhas x ' + (range.e.c - range.s.c + 1) + ' colunas.');
+
+      const chunk = 20000;
+      for (let r = headerRow + 1; r <= range.e.r; r++){
+        totalRows++;
+        const contrato = cellText(sheet, r, COL.contrato);
+        if (!contrato) continue;
+        const fornecedor = cellText(sheet, r, COL.fornecedor);
+        const item = cellText(sheet, r, COL.item);
+        const tipo = cellText(sheet, r, COL.tipo);
+        const projeto = cellText(sheet, r, COL.projeto);
+        const mesano = cellText(sheet, r, COL.mesano);
+        const faturado = cellText(sheet, r, COL.faturado);
+        const fadfiaratRaw = cellText(sheet, r, COL.fadfiarat);
+        const fadfiarat = FADFIARAT_LABEL[fadfiaratRaw] || fadfiaratRaw || '(nao informado)';
+        const valor = cellNumber(sheet, r, COL.valor);
+        const key = contrato+'|'+fornecedor+'|'+item+'|'+tipo+'|'+projeto+'|'+mesano+'|'+faturado+'|'+fadfiarat;
+        let entry = map.get(key);
+        if (!entry) { entry = { contrato:contrato, fornecedor:fornecedor, item:item, tipo:tipo, projeto:projeto, mesano:mesano, faturado:faturado, fadfiarat:fadfiarat, valor:0, qtd:0 }; map.set(key, entry); }
+        entry.valor += valor;
+        entry.qtd += 1;
+        usedRows++;
+        if (r % chunk === 0){
+          const pct = 20 + Math.round(((r - headerRow) / (range.e.r - headerRow)) * 65);
+          post('progress', Math.min(pct, 85));
+          post('log', 'Processando linha ' + (r-headerRow).toLocaleString('pt-BR') + ' / ' + (range.e.r-headerRow).toLocaleString('pt-BR') + '...');
+        }
+      }
+    });
+
+    post('progress', 90);
+    post('log', 'Consolidando ' + map.size.toLocaleString('pt-BR') + ' combinacoes unicas (Contrato+Fornecedor+Item+Tipo+Projeto+Mes/Ano+Faturado)...');
+    const consolidado = Array.from(map.values());
+    post('progress', 97);
+    post('log', 'Total de linhas lidas: ' + totalRows.toLocaleString('pt-BR') + ' | linhas validas usadas: ' + usedRows.toLocaleString('pt-BR') + '.', 'ok');
+    post('progress', 100);
+    self.postMessage({ type:'done', consolidado: consolidado, meta:{ totalRows:totalRows, usedRows:usedRows, sheets:wb.SheetNames } });
+  } catch(err){
+    self.postMessage({ type:'error', message: (err && err.message) ? err.message : String(err) });
+  }
+};
+
+function post(type, payload){ self.postMessage({ type:type, value:payload }); }
+`;
+
+function createWorker(){
+  const blob = new Blob([WORKER_SRC], { type:'text/javascript' });
+  return new Worker(URL.createObjectURL(blob));
+}
+
+/* ============================================================
+   AGREGACOES (thread principal — roda sobre a base ja consolidada,
+   por isso permanece rapido mesmo com a base original > 300.000 linhas)
+   ============================================================ */
+function groupSum(rows, keyFn){
+  const m = new Map();
+  for (const row of rows){
+    const k = keyFn(row);
+    let e = m.get(k);
+    if (!e) { e = { chave:k, valor:0, qtd:0 }; m.set(k, e); }
+    e.valor += row.valor; e.qtd += row.qtd;
+  }
+  return Array.from(m.values());
+}
+function abcCurve(sortedDesc, total){
+  let acum = 0;
+  return sortedDesc.map(r => {
+    acum += r.valor;
+    const pctAcum = total ? acum/total : 0;
+    const classe = pctAcum <= 0.8 ? 'A' : (pctAcum <= 0.95 ? 'B' : 'C');
+    return { chave:r.chave, valor:r.valor, pctPart: total?r.valor/total:0, pctAcum:pctAcum, classe:classe };
+  });
+}
+function mesAnoSortKey(s){
+  const p = String(s).split('/');
+  if (p.length!==2) return 0;
+  const mm = parseInt(p[0],10)||0, yy = parseInt(p[1],10)||0;
+  return yy*100+mm;
+}
+
+function computeAggregates(rows){
+  const totalValor = rows.reduce((a,r)=>a+r.valor,0);
+  const totalQtd = rows.reduce((a,r)=>a+r.qtd,0);
+  const setOf = f => new Set(rows.map(f).filter(v=>v!==''));
+  const contratosUnicos = setOf(r=>r.contrato);
+  const fornecedoresUnicos = setOf(r=>r.fornecedor);
+  const projetosUnicos = setOf(r=>r.projeto);
+  const itensUnicos = setOf(r=>r.item);
+
+  const faturadoRows = rows.filter(r=>r.faturado==='Faturado');
+  const naoFaturadoRows = rows.filter(r=>r.faturado!=='Faturado' && r.faturado!=='');
+  const valorFaturado = faturadoRows.reduce((a,r)=>a+r.valor,0);
+  const valorNaoFaturado = naoFaturadoRows.reduce((a,r)=>a+r.valor,0);
+
+  const porItem = groupSum(rows, r=>r.item).sort((a,b)=>b.valor-a.valor);
+  const porFornecedor = groupSum(rows.filter(r=>r.fornecedor!==''), r=>r.fornecedor).sort((a,b)=>b.valor-a.valor);
+  const porContrato = groupSum(rows, r=>r.contrato).sort((a,b)=>b.valor-a.valor);
+  const porTipo = groupSum(rows, r=>r.tipo).sort((a,b)=>b.valor-a.valor);
+  const porProjeto = groupSum(rows, r=>r.projeto).sort((a,b)=>b.valor-a.valor);
+  const porMesAno = groupSum(rows, r=>r.mesano).sort((a,b)=>mesAnoSortKey(a.chave)-mesAnoSortKey(b.chave));
+  const porFadFiaRat = groupSum(rows, r=>r.fadfiarat).sort((a,b)=>b.valor-a.valor);
+  const porFadFiaRatFaturadoMap = new Map(groupSum(faturadoRows, r=>r.fadfiarat).map(r=>[r.chave, r.valor]));
+  const porFadFiaRatComparativo = porFadFiaRat.map(r => ({ chave:r.chave, total:r.valor, faturado: porFadFiaRatFaturadoMap.get(r.chave) || 0 }));
+
+  const porItemNF = groupSum(naoFaturadoRows, r=>r.item).sort((a,b)=>b.valor-a.valor);
+  const porFornecedorNF = groupSum(naoFaturadoRows.filter(r=>r.fornecedor!==''), r=>r.fornecedor).sort((a,b)=>b.valor-a.valor);
+
+  const abcItem = abcCurve(porItem, totalValor);
+  const abcFornecedor = abcCurve(porFornecedor, totalValor);
+  const abcItemResumo = ['A','B','C'].map(c=>{
+    const items = abcItem.filter(i=>i.classe===c);
+    const v = items.reduce((a,i)=>a+i.valor,0);
+    return { classe:c, qtd:items.length, valor:v, pct: totalValor?v/totalValor:0 };
+  });
+
+  // Alertas
+  const dupMap = new Map();
+  rows.forEach(r=>{
+    const k = r.contrato+'|'+r.item+'|'+r.mesano;
+    let e = dupMap.get(k);
+    if (!e) { e = { chave:k, numLanc:0, valor:0, forns:new Set() }; dupMap.set(k,e); }
+    e.numLanc++; e.valor += r.valor; if (r.fornecedor) e.forns.add(r.fornecedor);
+  });
+  const duplicidades = Array.from(dupMap.values()).filter(e=>e.numLanc>1)
+    .map(e=>({chave:e.chave, numLanc:e.numLanc, valor:e.valor, forns:Array.from(e.forns).join('; ')}))
+    .sort((a,b)=>b.valor-a.valor);
+
+  const mean = rows.length ? totalValor/rows.length : 0;
+  const variance = rows.length ? rows.reduce((a,r)=>a+Math.pow(r.valor-mean,2),0)/rows.length : 0;
+  const stdev = Math.sqrt(variance);
+  const limiteSuperior = mean + 3*stdev;
+  const outliers = rows.filter(r=>r.valor>limiteSuperior || r.valor<0).sort((a,b)=>b.valor-a.valor);
+
+  const withPct = arr => arr.map(r=>({chave:r.chave, valor:r.valor, pct: totalValor?r.valor/totalValor:0}));
+  let concContratos = withPct(porContrato).filter(r=>r.pct>0.10).sort((a,b)=>b.pct-a.pct);
+  if (!concContratos.length) concContratos = withPct(porContrato).slice(0,5);
+  let concFornecedores = withPct(porFornecedor).filter(r=>r.pct>0.10).sort((a,b)=>b.pct-a.pct);
+  if (!concFornecedores.length) concFornecedores = withPct(porFornecedor).slice(0,5);
+
+  return {
+    totalValor, totalQtd, contratosUnicos, fornecedoresUnicos, projetosUnicos, itensUnicos,
+    valorFaturado, valorNaoFaturado,
+    pctFaturado: totalValor?valorFaturado/totalValor:0, pctNaoFaturado: totalValor?valorNaoFaturado/totalValor:0,
+    porItem, porFornecedor, porContrato, porTipo, porProjeto, porMesAno, porFadFiaRat, porFadFiaRatComparativo,
+    top15Item: porItem.slice(0,15), top15Fornecedor: porFornecedor.slice(0,15), top15Contrato: porContrato.slice(0,15),
+    abcItem, abcFornecedor, abcItemResumo,
+    porItemNF, porFornecedorNF, top15ItemNF: porItemNF.slice(0,15), top15FornecedorNF: porFornecedorNF.slice(0,15),
+    duplicidades: duplicidades.slice(0,25), outliers: outliers.slice(0,25),
+    mean, stdev, limiteSuperior, concContratos, concFornecedores
+  };
+}
+
+/* ============================================================
+   FILTROS
+   ============================================================ */
+function distinctSorted(rows, field, sorter){
+  const s = new Set(rows.map(r=>r[field]).filter(v=>v!==''));
+  const arr = Array.from(s);
+  return sorter ? arr.sort(sorter) : arr.sort((a,b)=>a.localeCompare(b,'pt-BR'));
+}
+function populateFilters(){
+  const c = state.consolidado;
+  fillMsDropdown('projeto', distinctSorted(c,'projeto'));
+  fillMsDropdown('contrato', distinctSorted(c,'contrato'));
+  fillMsDropdown('fornecedor', distinctSorted(c,'fornecedor'));
+  fillSelectSingle('f-fadfiarat', distinctSorted(c,'fadfiarat'), 'Todos');
+  const meses = distinctSorted(c,'mesano',(a,b)=>mesAnoSortKey(a)-mesAnoSortKey(b));
+  fillSelectSingle('f-mesano-de', meses, '--');
+  fillSelectSingle('f-mesano-ate', meses, '--');
+  document.getElementById('filters').style.display = 'flex';
+}
+function fillSelect(id, values){
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  values.forEach(v=>{
+    const o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o);
+  });
+  sel.size = Math.min(6, Math.max(3, values.length));
+}
+
+/* ---------------- Dropdown com checkboxes (Projeto, Contrato) ---------------- */
+function fillMsDropdown(id, values){
+  fillSelect('f-'+id, values);
+  const panel = document.getElementById('ms-'+id+'-panel');
+  panel.innerHTML = values.map(v=>'<label class="ms-opt"><input type="checkbox" value="'+esc(v)+'"> '+esc(v)+'</label>').join('');
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb=>{
+    cb.addEventListener('change', ()=>{
+      const sel = document.getElementById('f-'+id);
+      Array.from(sel.options).forEach(o=>{ if(o.value===cb.value) o.selected = cb.checked; });
+      updateMsToggleLabel(id);
+      sel.dispatchEvent(new Event('change'));
+    });
+  });
+  updateMsToggleLabel(id);
+}
+function updateMsToggleLabel(id){
+  const sel = document.getElementById('f-'+id);
+  const selected = Array.from(sel.selectedOptions).map(o=>o.value);
+  const toggle = document.getElementById('ms-'+id+'-toggle');
+  const label = selected.length===0 ? 'Todos' : (selected.length===1 ? selected[0] : selected.length+' selecionados');
+  toggle.firstChild.textContent = label + ' ';
+}
+function syncMsDropdown(id){
+  const panel = document.getElementById('ms-'+id+'-panel');
+  const sel = document.getElementById('f-'+id);
+  const selectedVals = new Set(Array.from(sel.selectedOptions).map(o=>o.value));
+  panel.querySelectorAll('input[type=checkbox]').forEach(cb=>{ cb.checked = selectedVals.has(cb.value); });
+  updateMsToggleLabel(id);
+}
+['projeto','contrato','fornecedor'].forEach(id=>{
+  document.getElementById('ms-'+id+'-toggle').addEventListener('click', e=>{
+    e.stopPropagation();
+    const panel = document.getElementById('ms-'+id+'-panel');
+    document.querySelectorAll('.ms-panel.open').forEach(p=>{ if (p!==panel) p.classList.remove('open'); });
+    panel.classList.toggle('open');
+  });
+});
+document.addEventListener('click', ()=>{ document.querySelectorAll('.ms-panel.open').forEach(p=>p.classList.remove('open')); });
+function fillSelectSingle(id, values, placeholder){
+  const sel = document.getElementById(id);
+  sel.innerHTML = '';
+  const ph = document.createElement('option'); ph.value=''; ph.textContent=placeholder; sel.appendChild(ph);
+  values.forEach(v=>{
+    const o = document.createElement('option'); o.value=v; o.textContent=v; sel.appendChild(o);
+  });
+}
+function getSelectedValues(id){
+  return Array.from(document.getElementById(id).selectedOptions).map(o=>o.value);
+}
+function applyFiltersAndRender(){
+  const fContrato = getSelectedValues('f-contrato');
+  const fFornecedor = getSelectedValues('f-fornecedor');
+  const fProjeto = getSelectedValues('f-projeto');
+  const fFadFiaRat = document.getElementById('f-fadfiarat').value;
+  const fMesDe = document.getElementById('f-mesano-de').value;
+  const fMesAte = document.getElementById('f-mesano-ate').value;
+  const fFaturado = document.getElementById('f-faturado').value;
+
+  let rows = state.consolidado;
+  if (fContrato.length) rows = rows.filter(r=>fContrato.includes(r.contrato));
+  if (fFornecedor.length) rows = rows.filter(r=>fFornecedor.includes(r.fornecedor));
+  if (fProjeto.length) rows = rows.filter(r=>fProjeto.includes(r.projeto));
+  if (fFadFiaRat) rows = rows.filter(r=>r.fadfiarat===fFadFiaRat);
+  if (fMesDe) { const k = mesAnoSortKey(fMesDe); rows = rows.filter(r=>mesAnoSortKey(r.mesano)>=k); }
+  if (fMesAte) { const k = mesAnoSortKey(fMesAte); rows = rows.filter(r=>mesAnoSortKey(r.mesano)<=k); }
+  if (fFaturado === 'Faturado') rows = rows.filter(r=>r.faturado==='Faturado');
+  else if (fFaturado === 'Nao faturado') rows = rows.filter(r=>r.faturado!=='Faturado' && r.faturado!=='');
+
+  state.agg = computeAggregates(rows);
+  const activeFilters = fContrato.length+fFornecedor.length+fProjeto.length+(fFadFiaRat?1:0)+(fMesDe?1:0)+(fMesAte?1:0)+(fFaturado?1:0);
+  document.getElementById('filter-summary').textContent = activeFilters
+    ? ('Filtros ativos: '+activeFilters+' · '+rows.length.toLocaleString('pt-BR')+' combinacoes exibidas')
+    : '';
+  renderAll();
+}
+
+/* ============================================================
+   RENDERIZACAO
+   ============================================================ */
+const CHART_GREEN = '#92D050';
+const CHART_GREEN_DARK = '#6FA834';
+const CHART_NAVY = '#002B5C';
+const CHART_NAVY_700 = '#0A3B70';
+const CHART_NAVY_100 = '#E6EDF4';
+const CHART_INFO_BLUE = '#2E7BC4';
+const CHART_PALETTE = [CHART_GREEN, CHART_INFO_BLUE, CHART_NAVY_700, CHART_GREEN_DARK, CHART_NAVY, '#a9cdf0'];
+const PLOTLY_CONFIG = { displaylogo:false, responsive:true, modeBarButtonsToRemove:['lasso2d','select2d'] };
+
+function renderAll(){
+  const a = state.agg;
+  if (!a) return;
+  document.getElementById('resumo-empty').style.display = 'none';
+  document.getElementById('resumo-body').style.display = 'block';
+  renderResumo(a);
+  renderFinanceira(a);
+  renderAbc(a);
+  renderOperacional(a);
+  renderFaturamento(a);
+  renderAlertas(a);
+  renderConclusao(a);
+  setTimeout(()=>window.dispatchEvent(new Event('resize')), 50);
+}
+
+function kpiCard(label, value, sub, cls){
+  return '<div class="kpi-card '+(cls||'')+'"><div class="label">'+esc(label)+'</div><div class="value">'+value+'</div>'+(sub?'<div class="sub">'+sub+'</div>':'')+'</div>';
+}
+
+function renderResumo(a){
+  const grid = document.getElementById('kpi-grid');
+  grid.innerHTML =
+    kpiCard('Valor total da base', fmtBRLM(a.totalValor), null, 'accent') +
+    kpiCard('% Faturado', fmtPct(a.pctFaturado), fmtBRLM(a.valorFaturado), 'ok') +
+    kpiCard('% Nao Faturado', fmtPct(a.pctNaoFaturado), fmtBRLM(a.valorNaoFaturado), 'warn');
+
+  Plotly.react('chart-resumo-donut', [{
+    type:'pie', hole:.55, labels:['Faturado','Nao faturado'], values:[a.valorFaturado,a.valorNaoFaturado],
+    marker:{colors:[CHART_GREEN,CHART_NAVY_100]}, textinfo:'label+percent', hovertemplate:'%{label}: '+'%{value:,.2f}<extra></extra>'
+  }], { margin:{t:10,b:10,l:10,r:10}, showlegend:false, font:{family:'Segoe UI'} }, PLOTLY_CONFIG);
+
+  const cmp = a.porFadFiaRatComparativo;
+  Plotly.react('chart-resumo-fadfiarat', [
+    { type:'bar', name:'Total', x:cmp.map(c=>c.chave), y:cmp.map(c=>c.total/1e6), marker:{color:CHART_INFO_BLUE}, hovertemplate:'Total: R$ %{y:.1f} M<extra></extra>' },
+    { type:'bar', name:'Faturado', x:cmp.map(c=>c.chave), y:cmp.map(c=>c.faturado/1e6), marker:{color:CHART_GREEN}, hovertemplate:'Faturado: R$ %{y:.1f} M<extra></extra>' }
+  ], { margin:{t:10,b:30,l:50,r:10}, barmode:'group', legend:{orientation:'h', y:1.15}, yaxis:{title:'R$ M'}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+
+  Plotly.react('chart-resumo-mes', [{
+    type:'bar', x:a.porMesAno.map(m=>m.chave), y:a.porMesAno.map(m=>m.valor/1e6),
+    marker:{color:CHART_GREEN}, hovertemplate:'%{x}: R$ %{y:.1f} M<extra></extra>'
+  }], { margin:{t:10,b:50,l:50,r:10}, xaxis:{tickangle:-45}, yaxis:{title:'R$ M'}, font:{family:'Segoe UI',size:10} }, PLOTLY_CONFIG);
+}
+
+function barChart(divId, items, xLabel){
+  Plotly.react(divId, [{
+    type:'bar', x:items.map(i=>i.valor), y:items.map(i=>i.chave), orientation:'h',
+    marker:{color:CHART_GREEN}, hovertemplate:'%{y}: R$ %{x:,.2f}<extra></extra>'
+  }], { margin:{t:10,b:30,l:260,r:20}, yaxis:{autorange:'reversed'}, xaxis:{title:xLabel||''}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+}
+function renderFinanceira(a){
+  const rowsHtml = (list) => list.map(r=>
+    '<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtPct(a.totalValor?r.valor/a.totalValor:0)+'</td></tr>').join('');
+  const head = '<thead><tr><th>Item</th><th class="num">Valor Avanco</th><th class="num">% Participacao</th></tr></thead><tbody>';
+
+  barChart('chart-fin-item', a.top15Item);
+  document.getElementById('tbl-fin-item').innerHTML = head + rowsHtml(a.top15Item) + '</tbody>';
+
+  barChart('chart-fin-forn', a.top15Fornecedor);
+  document.getElementById('tbl-fin-forn').innerHTML = head.replace('Item','Fornecedor') + rowsHtml(a.top15Fornecedor) + '</tbody>';
+
+  barChart('chart-fin-contr', a.top15Contrato);
+  document.getElementById('tbl-fin-contr').innerHTML = head.replace('Item','Contrato') + rowsHtml(a.top15Contrato) + '</tbody>';
+}
+
+function renderAbc(a){
+  const sum = document.getElementById('abc-item-summary');
+  sum.innerHTML = a.abcItemResumo.map(c=>kpiCard('Classe '+c.classe, fmtInt(c.qtd)+' itens', fmtBRL(c.valor)+' ('+fmtPct(c.pct)+')',
+    c.classe==='A'?'ok':(c.classe==='B'?'warn':''))).join('');
+
+  const itemsA = a.abcItem.filter(i=>i.classe==='A').slice(0,40);
+  Plotly.react('chart-abc-item', [
+    { type:'bar', x:itemsA.map(i=>i.chave), y:itemsA.map(i=>i.valor), marker:{color:CHART_GREEN}, name:'Valor', hovertemplate:'%{x}: R$ %{y:,.2f}<extra></extra>' },
+    { type:'scatter', mode:'lines+markers', x:itemsA.map(i=>i.chave), y:itemsA.map(i=>i.pctAcum*100), yaxis:'y2', name:'% Acumulado', line:{color:CHART_INFO_BLUE}, hovertemplate:'%{y:.2f}%<extra></extra>' }
+  ], {
+    margin:{t:10,b:120,l:60,r:60}, xaxis:{tickangle:-45, tickfont:{size:9}},
+    yaxis:{title:'Valor (R$)'}, yaxis2:{title:'% Acumulado', overlaying:'y', side:'right', range:[0,100]},
+    legend:{orientation:'h', y:1.1}, font:{family:'Segoe UI',size:10}
+  }, PLOTLY_CONFIG);
+
+  document.getElementById('tbl-abc-item').innerHTML = '<thead><tr><th>Item</th><th class="num">Valor</th><th class="num">% Participacao</th><th class="num">% Acumulado</th><th>Classe</th></tr></thead><tbody>'+
+    a.abcItem.filter(i=>i.classe==='A').map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtPct(r.pctPart)+'</td><td class="num">'+fmtPct(r.pctAcum)+'</td><td><span class="badge badge-a">A</span></td></tr>').join('')+'</tbody>';
+
+  Plotly.react('chart-abc-forn', [{
+    type:'bar', x:a.abcFornecedor.map(f=>f.chave), y:a.abcFornecedor.map(f=>f.valor), marker:{color:CHART_GREEN}, hovertemplate:'%{x}: R$ %{y:,.2f}<extra></extra>'
+  }], { margin:{t:10,b:60,l:60,r:20}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+
+  document.getElementById('tbl-abc-forn').innerHTML = '<thead><tr><th>Fornecedor</th><th class="num">Valor</th><th class="num">% Participacao</th><th class="num">% Acumulado</th><th>Classe</th></tr></thead><tbody>'+
+    a.abcFornecedor.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtPct(r.pctPart)+'</td><td class="num">'+fmtPct(r.pctAcum)+'</td><td><span class="badge badge-'+r.classe.toLowerCase()+'">'+r.classe+'</span></td></tr>').join('')+'</tbody>';
+}
+
+function renderOperacional(a){
+  Plotly.react('chart-op-tipo', [{
+    type:'bar', x:a.porTipo.map(t=>t.valor), y:a.porTipo.map(t=>t.chave), orientation:'h', marker:{color:CHART_GREEN}, hovertemplate:'%{y}: R$ %{x:,.2f}<extra></extra>'
+  }], { margin:{t:10,b:30,l:200,r:20}, yaxis:{autorange:'reversed'}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+  document.getElementById('tbl-op-tipo').innerHTML = '<thead><tr><th>Tipo</th><th class="num">Valor</th><th class="num">Qtd. Registros</th><th class="num">% Participacao</th></tr></thead><tbody>'+
+    a.porTipo.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtInt(r.qtd)+'</td><td class="num">'+fmtPct(a.totalValor?r.valor/a.totalValor:0)+'</td></tr>').join('')+'</tbody>';
+
+  Plotly.react('chart-op-fadfiarat', [{
+    type:'bar', x:a.porFadFiaRat.map(t=>t.valor), y:a.porFadFiaRat.map(t=>t.chave), orientation:'h', marker:{color:CHART_GREEN}, hovertemplate:'%{y}: R$ %{x:,.2f}<extra></extra>'
+  }], { margin:{t:10,b:30,l:100,r:20}, yaxis:{autorange:'reversed'}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+  document.getElementById('tbl-op-fadfiarat').innerHTML = '<thead><tr><th>FAD / FIA / Rateio</th><th class="num">Valor</th><th class="num">Qtd. Registros</th><th class="num">% Participacao</th></tr></thead><tbody>'+
+    a.porFadFiaRat.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtInt(r.qtd)+'</td><td class="num">'+fmtPct(a.totalValor?r.valor/a.totalValor:0)+'</td></tr>').join('')+'</tbody>';
+
+  Plotly.react('chart-op-proj', [{
+    type:'pie', labels:a.porProjeto.map(p=>p.chave), values:a.porProjeto.map(p=>p.valor), hole:.5, marker:{colors:CHART_PALETTE}
+  }], { margin:{t:10,b:10,l:10,r:10}, font:{family:'Segoe UI',size:11} }, PLOTLY_CONFIG);
+  document.getElementById('tbl-op-proj').innerHTML = '<thead><tr><th>Projeto</th><th class="num">Valor</th><th class="num">Qtd.</th><th class="num">%</th></tr></thead><tbody>'+
+    a.porProjeto.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtInt(r.qtd)+'</td><td class="num">'+fmtPct(a.totalValor?r.valor/a.totalValor:0)+'</td></tr>').join('')+'</tbody>';
+
+  Plotly.react('chart-op-mes', [{
+    type:'scatter', mode:'lines+markers', x:a.porMesAno.map(m=>m.chave), y:a.porMesAno.map(m=>m.valor), line:{color:CHART_GREEN}, marker:{color:CHART_NAVY_700}
+  }], { margin:{t:10,b:60,l:60,r:20}, xaxis:{tickangle:-45}, font:{family:'Segoe UI',size:10} }, PLOTLY_CONFIG);
+  document.getElementById('tbl-op-mes').innerHTML = '<thead><tr><th>Mes/Ano</th><th class="num">Valor</th><th class="num">Qtd.</th><th class="num">%</th></tr></thead><tbody>'+
+    a.porMesAno.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtInt(r.qtd)+'</td><td class="num">'+fmtPct(a.totalValor?r.valor/a.totalValor:0)+'</td></tr>').join('')+'</tbody>';
+}
+
+function renderFaturamento(a){
+  document.getElementById('fat-summary').innerHTML =
+    kpiCard('Valor faturado', fmtBRL(a.valorFaturado), fmtPct(a.pctFaturado), 'ok') +
+    kpiCard('Valor nao faturado', fmtBRL(a.valorNaoFaturado), fmtPct(a.pctNaoFaturado), 'warn');
+  document.getElementById('tbl-fat-item').innerHTML = '<thead><tr><th>Item</th><th class="num">Valor</th><th class="num">% do Saldo</th></tr></thead><tbody>'+
+    a.top15ItemNF.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtPct(a.valorNaoFaturado?r.valor/a.valorNaoFaturado:0)+'</td></tr>').join('')+'</tbody>';
+  document.getElementById('tbl-fat-forn').innerHTML = '<thead><tr><th>Fornecedor</th><th class="num">Valor</th><th class="num">% do Saldo</th></tr></thead><tbody>'+
+    a.top15FornecedorNF.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num">'+fmtPct(a.valorNaoFaturado?r.valor/a.valorNaoFaturado:0)+'</td></tr>').join('')+'</tbody>';
+}
+
+function renderAlertas(a){
+  document.getElementById('tbl-alert-dup').innerHTML = '<thead><tr><th>Contrato|Item|Mes-Ano</th><th class="num">Nº Lancamentos</th><th class="num">Valor Total</th><th>Fornecedores</th></tr></thead><tbody>'+
+    a.duplicidades.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtInt(r.numLanc)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td>'+esc(r.forns)+'</td></tr>').join('')+'</tbody>';
+  document.getElementById('tbl-alert-out').innerHTML = '<thead><tr><th>Contrato</th><th>Item</th><th>Fornecedor</th><th>Mes/Ano</th><th class="num">Valor</th></tr></thead><tbody>'+
+    a.outliers.map(r=>'<tr><td>'+esc(r.contrato)+'</td><td>'+esc(r.item)+'</td><td>'+esc(r.fornecedor)+'</td><td>'+esc(r.mesano)+'</td><td class="num">'+fmtBRL(r.valor)+'</td></tr>').join('')+'</tbody>';
+  document.getElementById('tbl-alert-cc').innerHTML = '<thead><tr><th>Contrato</th><th class="num">Valor</th><th class="num">% do Total</th></tr></thead><tbody>'+
+    a.concContratos.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num"><span class="badge '+(r.pct>0.3?'badge-danger':(r.pct>0.1?'badge-warn':'badge-ok'))+'">'+fmtPct(r.pct)+'</span></td></tr>').join('')+'</tbody>';
+  document.getElementById('tbl-alert-cf').innerHTML = '<thead><tr><th>Fornecedor</th><th class="num">Valor</th><th class="num">% do Total</th></tr></thead><tbody>'+
+    a.concFornecedores.map(r=>'<tr><td>'+esc(r.chave)+'</td><td class="num">'+fmtBRL(r.valor)+'</td><td class="num"><span class="badge '+(r.pct>0.3?'badge-danger':(r.pct>0.1?'badge-warn':'badge-ok'))+'">'+fmtPct(r.pct)+'</span></td></tr>').join('')+'</tbody>';
+}
+
+function renderConclusao(a){
+  const top1Contrato = a.porContrato[0], top1Fornecedor = a.porFornecedor[0], top1Tipo = a.porTipo[0];
+  const classeA = a.abcItemResumo.find(c=>c.classe==='A') || {qtd:0,pct:0};
+  const classeC = a.abcItemResumo.find(c=>c.classe==='C') || {qtd:0,pct:0};
+  const top1FornNF = a.top15FornecedorNF[0];
+  const lines = [
+    'A base filtrada soma '+fmtBRL(a.totalValor)+' em '+fmtInt(a.totalQtd)+' registros originais, distribuidos em '+a.contratosUnicos.size+' contrato(s) e '+a.fornecedoresUnicos.size+' fornecedor(es).',
+    top1Contrato ? ('O contrato '+esc(top1Contrato.chave)+' responde por '+fmtPct(a.totalValor?top1Contrato.valor/a.totalValor:0)+' do valor total.') : 'Nenhum contrato identificado no recorte atual.',
+    top1Fornecedor ? ('O fornecedor '+esc(top1Fornecedor.chave)+' concentra '+fmtPct(a.totalValor?top1Fornecedor.valor/a.totalValor:0)+' do valor — atencao ao risco de dependencia.') : '',
+    top1Tipo ? ('O tipo predominante e "'+esc(top1Tipo.chave)+'", com '+fmtPct(a.totalValor?top1Tipo.valor/a.totalValor:0)+' do valor.') : '',
+    'A Curva ABC mostra que '+fmtInt(classeA.qtd)+' item(ns) Classe A concentram '+fmtPct(classeA.pct)+' do valor — foco prioritario de gestao.',
+    fmtPct(a.pctFaturado)+' do valor ja esta faturado; '+fmtPct(a.pctNaoFaturado)+' ('+fmtBRL(a.valorNaoFaturado)+') permanece em aberto.',
+    top1FornNF ? ('O maior saldo nao faturado esta concentrado em '+esc(top1FornNF.chave)+' ('+fmtBRL(top1FornNF.valor)+').') : '',
+    'Foram identificadas '+fmtInt(a.duplicidades.length)+' combinacoes com multiplos lancamentos e '+fmtInt(a.outliers.length)+' valores estatisticamente atipicos — recomenda-se checagem.',
+    'Oportunidade de otimizacao: '+fmtInt(classeC.qtd)+' item(ns) Classe C representam apenas '+fmtPct(classeC.pct)+' do valor, mas geram complexidade operacional.',
+    'Recomenda-se priorizar a regularizacao dos saldos nao faturados e monitorar continuamente a concentracao de custo em contratos e fornecedores principais.'
+  ].filter(Boolean);
+  document.getElementById('conclusao-list').innerHTML = lines.map((l,i)=>'<li><b>'+(i+1)+'.</b> '+l+'</li>').join('');
+}
+
+/* ============================================================
+   NAVEGACAO LATERAL
+   ============================================================ */
+document.getElementById('nav').addEventListener('click', e=>{
+  const item = e.target.closest('.nav-item');
+  if (!item) return;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  item.classList.add('active');
+  const panel = item.dataset.panel;
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+panel).classList.add('active');
+  document.getElementById('page-title').childNodes[0].textContent = item.textContent.trim().replace(/^\\S+\\s/,'')+' ';
+  setTimeout(()=>window.dispatchEvent(new Event('resize')), 50); // forca Plotly a redimensionar
+});
+
+document.querySelectorAll('.filters select').forEach(sel=>sel.addEventListener('change', ()=>{ if (state.consolidado.length) applyFiltersAndRender(); }));
+document.getElementById('btn-clear-filters').addEventListener('click', ()=>{
+  document.querySelectorAll('.filters select[multiple]').forEach(s=>Array.from(s.options).forEach(o=>o.selected=false));
+  ['f-faturado','f-fadfiarat','f-mesano-de','f-mesano-ate'].forEach(id=>document.getElementById(id).value = '');
+  ['projeto','contrato','fornecedor'].forEach(id=>syncMsDropdown(id));
+  if (state.consolidado.length) applyFiltersAndRender();
+});
+
+/* ============================================================
+   PROGRESSO / LOG
+   ============================================================ */
+function showProgress(){ document.getElementById('progress-panel').classList.add('show'); document.getElementById('log-box').innerHTML=''; setProgress(0); }
+function hideProgress(){ document.getElementById('progress-panel').classList.remove('show'); }
+function setProgress(pct, title){ document.getElementById('progress-fill').style.width = pct+'%'; document.getElementById('progress-pct').textContent = pct+'%'; if (title) document.getElementById('progress-title').textContent = title; }
+function log(msg, level){
+  const box = document.getElementById('log-box');
+  const line = document.createElement('div');
+  line.className = 'log-line'+(level==='err'?' err':(level==='ok'?' ok':''));
+  const t = new Date().toLocaleTimeString('pt-BR');
+  line.textContent = '['+t+'] '+msg;
+  box.appendChild(line);
+  box.scrollTop = box.scrollHeight;
+}
+function toast(msg, isErr){
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.className = 'toast show'+(isErr?' err':'');
+  setTimeout(()=>el.classList.remove('show'), 4500);
+}
+
+/* ============================================================
+   IndexedDB — lembrar o handle do arquivo (File System Access API)
+   ============================================================ */
+function idbOpen(){
+  return new Promise((res,rej)=>{
+    const req = indexedDB.open('dashboardFaturamentoDB', 1);
+    req.onupgradeneeded = ()=>req.result.createObjectStore('kv');
+    req.onsuccess = ()=>res(req.result);
+    req.onerror = ()=>rej(req.error);
+  });
+}
+async function idbSet(key, val){
+  try { const db = await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction('kv','readwrite'); tx.objectStore('kv').put(val,key); tx.oncomplete=()=>res(); tx.onerror=()=>rej(tx.error); }); } catch(e){}
+}
+async function idbGet(key){
+  try { const db = await idbOpen(); return new Promise((res,rej)=>{ const tx=db.transaction('kv','readonly'); const rq=tx.objectStore('kv').get(key); rq.onsuccess=()=>res(rq.result); rq.onerror=()=>rej(rq.error); }); } catch(e){ return undefined; }
+}
+(async function tryRestoreHandle(){
+  try {
+    const h = await idbGet('xlsxHandle');
+    if (h) window.__fsHandle = h;
+  } catch(e){}
+})();
+
+/* ============================================================
+   SELECAO / LEITURA DO ARQUIVO
+   ============================================================ */
+function pickFileViaInput(){
+  return new Promise(resolve=>{
+    const input = document.getElementById('file-input');
+    input.value = '';
+    input.onchange = () => resolve(input.files[0] || null);
+    input.click();
+  });
+}
+async function pickFile(){
+  if (window.showOpenFilePicker){
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        suggestedName: SOURCE_FILENAME,
+        types: [{ description:'Planilha Excel', accept:{'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':['.xlsx']} }],
+        multiple:false
+      });
+      window.__fsHandle = handle;
+      idbSet('xlsxHandle', handle);
+      return await handle.getFile();
+    } catch(e){
+      if (e && e.name === 'AbortError') return null;
+      log('Falha ao usar seletor de arquivos avancado, tentando metodo alternativo...', 'err');
+    }
+  }
+  return await pickFileViaInput();
+}
+
+async function refreshBase(){
+  if (!state.user){
+    toast('Faca login para atualizar a base.', true);
+    document.getElementById('login-form').style.display = 'flex';
+    document.getElementById('login-email').focus();
+    return;
+  }
+  const btn = document.getElementById('btn-refresh');
+  btn.disabled = true;
+  showProgress();
+  log('Iniciando atualizacao da base...');
+  setProgress(2, 'Localizando arquivo...');
+
+  let file = null;
+
+  // 1) tenta localizar automaticamente via fetch relativo (funciona quando o dashboard
+  //    e servido por um servidor local/http; navegadores bloqueiam isso quando o arquivo
+  //    e aberto diretamente via file://)
+  try {
+    log('Procurando automaticamente "'+SOURCE_FILENAME+'" na mesma pasta do dashboard...');
+    const resp = await fetch(SOURCE_FILENAME, { cache:'no-store' });
+    if (resp.ok){
+      const blob = await resp.blob();
+      file = new File([blob], SOURCE_FILENAME);
+      log('Arquivo localizado automaticamente.', 'ok');
+    }
+  } catch(e){ /* esperado falhar quando aberto via file:// */ }
+
+  // 2) tenta reutilizar o identificador de arquivo lembrado de uma atualizacao anterior
+  if (!file && window.__fsHandle){
+    try {
+      const perm = await window.__fsHandle.requestPermission({ mode:'read' });
+      if (perm === 'granted'){
+        file = await window.__fsHandle.getFile();
+        log('Reutilizando arquivo selecionado anteriormente: '+file.name, 'ok');
+      }
+    } catch(e){}
+  }
+
+  // 3) solicita selecao manual (necessario na primeira vez, por seguranca do navegador —
+  //    paginas web nao tem permissao de varrer o disco automaticamente)
+  if (!file){
+    log('Nao foi possivel localizar o arquivo automaticamente. Selecione "'+SOURCE_FILENAME+'" na janela que sera aberta.');
+    file = await pickFile();
+    if (!file){
+      log('Selecao cancelada pelo usuario.', 'err');
+      toast('Atualizacao cancelada.', true);
+      setTimeout(hideProgress, 1500);
+      btn.disabled = false;
+      return;
+    }
+    log('Arquivo selecionado: '+file.name+' ('+fmtBytes(file.size)+')', 'ok');
+  }
+
+  setProgress(6, 'Enviando arquivo para processamento em segundo plano...');
+  try {
+    const buffer = await file.arrayBuffer();
+    log('Arquivo carregado em memoria ('+fmtBytes(buffer.byteLength)+'). Iniciando leitura da planilha...');
+    processBuffer(buffer, file.name, btn);
+  } catch(e){
+    log('Erro ao ler o arquivo: '+e.message, 'err');
+    toast('Erro ao ler o arquivo selecionado.', true);
+    btn.disabled = false;
+  }
+}
+
+function processBuffer(buffer, fileName, btn){
+  if (state.worker) { try { state.worker.terminate(); } catch(e){} }
+  const worker = createWorker();
+  state.worker = worker;
+
+  worker.onmessage = ev => {
+    const msg = ev.data;
+    if (msg.type === 'log') log(msg.value);
+    else if (msg.type === 'progress') setProgress(msg.value, 'Processando base de faturamento...');
+    else if (msg.type === 'error'){
+      log('ERRO: '+msg.value, 'err');
+      toast('Erro ao processar a base: '+msg.value, true);
+      btn.disabled = false;
+      worker.terminate();
+    } else if (msg.type === 'done'){
+      state.consolidado = msg.consolidado;
+      state.fileName = fileName;
+      state.lastUpdate = new Date();
+      log('Populando filtros e indicadores...');
+      populateFilters();
+      applyFiltersAndRender();
+      document.getElementById('last-update').textContent = 'Ultima atualizacao: '+state.lastUpdate.toLocaleString('pt-BR')+' — '+msg.meta.usedRows.toLocaleString('pt-BR')+' linhas processadas';
+      document.getElementById('foot-filename').textContent = fileName;
+      log('Dados processados localmente com sucesso.', 'ok');
+      worker.terminate();
+      (async () => {
+        if (state.user){
+          try {
+            await publishToSupabase(state.consolidado, fileName, msg.meta.usedRows);
+            document.getElementById('last-update').textContent = 'Ultima atualizacao (Supabase): '+state.lastUpdate.toLocaleString('pt-BR')+' — '+msg.meta.usedRows.toLocaleString('pt-BR')+' linhas processadas';
+            document.getElementById('foot-filename').textContent = fileName + ' (via Supabase)';
+            toast('Base atualizada e publicada no Supabase: '+fmtInt(msg.meta.usedRows)+' linhas.');
+          } catch(e){
+            log('ERRO ao publicar no Supabase: '+(e.message||e), 'err');
+            toast('Processado localmente, mas falhou ao publicar no Supabase.', true);
+          }
+        } else {
+          log('Voce nao esta logado — dados ficam apenas nesta pre-visualizacao local, nao foram publicados no Supabase.');
+          toast('Base processada localmente (pre-visualizacao). Faca login para publicar.');
+        }
+        btn.disabled = false;
+        setTimeout(hideProgress, 2000);
+      })();
+    }
+  };
+  worker.onerror = err => {
+    log('ERRO no processamento: '+err.message, 'err');
+    toast('Erro inesperado ao processar a base.', true);
+    btn.disabled = false;
+  };
+  worker.postMessage({ buffer, fileName }, [buffer]);
+}
+
+document.getElementById('btn-refresh').addEventListener('click', refreshBase);
+
+/* ============================================================
+   EXPORTACAO — Excel
+   ============================================================ */
+function exportExcel(){
+  const a = state.agg;
+  if (!a){ toast('Carregue a base antes de exportar.', true); return; }
+  const wb = XLSX.utils.book_new();
+  const addSheet = (name, aoa) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), name);
+
+  addSheet('Resumo', [
+    ['Metrica','Valor'],
+    ['Valor total da base', a.totalValor],
+    ['Quantidade de registros', a.totalQtd],
+    ['Quantidade de contratos', a.contratosUnicos.size],
+    ['Quantidade de fornecedores', a.fornecedoresUnicos.size],
+    ['Quantidade de projetos', a.projetosUnicos.size],
+    ['Valor faturado', a.valorFaturado],
+    ['Valor nao faturado', a.valorNaoFaturado],
+    ['Percentual faturado', a.pctFaturado],
+    ['Percentual nao faturado', a.pctNaoFaturado]
+  ]);
+  addSheet('Top15 Itens', [['Item','Valor','% Participacao']].concat(a.top15Item.map(r=>[r.chave,r.valor,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Top15 Fornecedores', [['Fornecedor','Valor','% Participacao']].concat(a.top15Fornecedor.map(r=>[r.chave,r.valor,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Top15 Contratos', [['Contrato','Valor','% Participacao']].concat(a.top15Contrato.map(r=>[r.chave,r.valor,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Curva ABC Item', [['Item','Valor','% Participacao','% Acumulado','Classe']].concat(a.abcItem.map(r=>[r.chave,r.valor,r.pctPart,r.pctAcum,r.classe])));
+  addSheet('Curva ABC Fornecedor', [['Fornecedor','Valor','% Participacao','% Acumulado','Classe']].concat(a.abcFornecedor.map(r=>[r.chave,r.valor,r.pctPart,r.pctAcum,r.classe])));
+  addSheet('Por Tipo', [['Tipo','Valor','Qtd','% Participacao']].concat(a.porTipo.map(r=>[r.chave,r.valor,r.qtd,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Por Projeto', [['Projeto','Valor','Qtd','% Participacao']].concat(a.porProjeto.map(r=>[r.chave,r.valor,r.qtd,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Por Mes-Ano', [['Mes/Ano','Valor','Qtd','% Participacao']].concat(a.porMesAno.map(r=>[r.chave,r.valor,r.qtd,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Por FAD-FIA-Rateio', [['FAD / FIA / Rateio','Valor','Qtd','% Participacao']].concat(a.porFadFiaRat.map(r=>[r.chave,r.valor,r.qtd,a.totalValor?r.valor/a.totalValor:0])));
+  addSheet('Faturamento', [['Situacao','Valor','% do Total'],['Faturado',a.valorFaturado,a.pctFaturado],['Nao faturado',a.valorNaoFaturado,a.pctNaoFaturado]]);
+  addSheet('Itens Nao Faturados', [['Item','Valor','% do Saldo']].concat(a.top15ItemNF.map(r=>[r.chave,r.valor,a.valorNaoFaturado?r.valor/a.valorNaoFaturado:0])));
+  addSheet('Alertas Duplicidade', [['Contrato|Item|Mes-Ano','Nº Lancamentos','Valor','Fornecedores']].concat(a.duplicidades.map(r=>[r.chave,r.numLanc,r.valor,r.forns])));
+  addSheet('Alertas Atipicos', [['Contrato','Item','Fornecedor','Mes/Ano','Valor']].concat(a.outliers.map(r=>[r.contrato,r.item,r.fornecedor,r.mesano,r.valor])));
+
+  const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+  XLSX.writeFile(wb, 'Dashboard_Faturamento_'+ts+'.xlsx');
+  toast('Excel exportado com sucesso.');
+}
+document.getElementById('btn-export-excel').addEventListener('click', exportExcel);
+document.getElementById('btn-export-pdf').addEventListener('click', ()=>{
+  if (!state.agg){ toast('Carregue a base antes de exportar.', true); return; }
+  document.querySelectorAll('.panel').forEach(p=>p.classList.add('active'));
+  window.print();
+  setTimeout(()=>{
+    document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+    const activeId = document.querySelector('.nav-item.active').dataset.panel;
+    document.getElementById('panel-'+activeId).classList.add('active');
+  }, 300);
+});
+
+/* ============================================================
+   SUPABASE — carregamento (somente leitura, chave anon)
+   ============================================================ */
+async function loadFromSupabase(){
+  if (!supabaseClient) return false;
+  try {
+    const { data: meta } = await supabaseClient.from('faturamento_meta').select('*').eq('id',1).single();
+    const pageSize = 1000;
+    let all = [];
+    let from = 0;
+    while (true){
+      const { data, error } = await supabaseClient.from('faturamento_consolidado').select('*').range(from, from+pageSize-1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
+    if (!all.length) return false;
+    state.consolidado = all.map(r => ({
+      contrato:r.contrato||'', fornecedor:r.fornecedor||'', item:r.item||'', tipo:r.tipo||'',
+      projeto:r.projeto||'', mesano:r.mesano||'', faturado:r.faturado||'', fadfiarat:r.fadfiarat||'',
+      valor:Number(r.valor)||0, qtd:Number(r.qtd)||0
+    }));
+    state.fileName = (meta && meta.file_name) || 'Supabase';
+    state.lastUpdate = meta && meta.last_update ? new Date(meta.last_update) : new Date();
+    populateFilters();
+    applyFiltersAndRender();
+    document.getElementById('last-update').textContent = 'Ultima atualizacao (Supabase): '+state.lastUpdate.toLocaleString('pt-BR')+' — '+fmtInt((meta && meta.rows_processed) || all.length)+' linhas processadas';
+    document.getElementById('foot-filename').textContent = state.fileName + ' (via Supabase)';
+    return true;
+  } catch(e){
+    console.error('Falha ao carregar do Supabase:', e);
+    return false;
+  }
+}
+
+/* ============================================================
+   SUPABASE — publicacao (somente usuarios autenticados)
+   ============================================================ */
+async function publishToSupabase(rows, fileName, rowsProcessed){
+  log('Publicando no Supabase (usuario: '+state.user.email+')...');
+  const { error: delErr } = await supabaseClient.from('faturamento_consolidado').delete().gt('id', 0);
+  if (delErr) throw delErr;
+  const batchSize = 500;
+  for (let i=0; i<rows.length; i+=batchSize){
+    const batch = rows.slice(i, i+batchSize).map(r => ({
+      contrato:r.contrato, fornecedor:r.fornecedor, item:r.item, tipo:r.tipo, projeto:r.projeto,
+      mesano:r.mesano, faturado:r.faturado, fadfiarat:r.fadfiarat, valor:r.valor, qtd:r.qtd
+    }));
+    const { error } = await supabaseClient.from('faturamento_consolidado').insert(batch);
+    if (error) throw error;
+    log('Lote '+(i+1)+'-'+Math.min(i+batchSize, rows.length)+' / '+rows.length+' publicado.');
+  }
+  const { error: metaErr } = await supabaseClient.from('faturamento_meta').upsert({
+    id:1, last_update:new Date().toISOString(), file_name:fileName, rows_processed:rowsProcessed
+  });
+  if (metaErr) throw metaErr;
+  log('Publicacao no Supabase concluida.', 'ok');
+}
+
+/* ============================================================
+   SUPABASE AUTH — login / logout
+   ============================================================ */
+function renderAuthUI(){
+  const toggle = document.getElementById('btn-login-toggle');
+  const form = document.getElementById('login-form');
+  const status = document.getElementById('auth-status');
+  if (state.user){
+    toggle.style.display = 'none';
+    form.style.display = 'none';
+    status.style.display = 'flex';
+    document.getElementById('auth-user-email').textContent = state.user.email;
+  } else {
+    toggle.style.display = 'inline-flex';
+    status.style.display = 'none';
+  }
+}
+async function initAuth(){
+  if (!supabaseClient) return;
+  const { data: { session } } = await supabaseClient.auth.getSession();
+  state.user = session ? session.user : null;
+  renderAuthUI();
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    state.user = session ? session.user : null;
+    renderAuthUI();
+  });
+}
+document.getElementById('btn-login-toggle').addEventListener('click', () => {
+  const form = document.getElementById('login-form');
+  form.style.display = form.style.display === 'none' ? 'flex' : 'none';
+});
+document.getElementById('btn-login-submit').addEventListener('click', async () => {
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  errEl.textContent = '';
+  if (!email || !password){ errEl.textContent = 'Preencha e-mail e senha.'; return; }
+  const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+  if (error){ errEl.textContent = 'Login invalido.'; return; }
+  state.user = data.user;
+  document.getElementById('login-password').value = '';
+  document.getElementById('login-form').style.display = 'none';
+  renderAuthUI();
+  toast('Login realizado: '+state.user.email);
+});
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  await supabaseClient.auth.signOut();
+  state.user = null;
+  renderAuthUI();
+  toast('Voce saiu da conta.');
+});
+
+/* Estado inicial */
+document.getElementById('page-title').childNodes[0].textContent = 'Resumo Executivo ';
+document.getElementById('btn-refresh').title = 'Requer login. Processa um arquivo .xlsx local e publica automaticamente no Supabase para todos verem.';
+initAuth();
+loadFromSupabase();
+</script>
+</body>
+</html>
