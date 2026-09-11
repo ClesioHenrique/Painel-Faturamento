@@ -1044,13 +1044,22 @@ async function refreshBase(){
     }
   } catch(e){ /* esperado falhar quando aberto via file:// */ }
 
-  // 2) tenta reutilizar o identificador de arquivo lembrado de uma atualizacao anterior
+  // 2) tenta reutilizar o identificador de arquivo lembrado de uma atualizacao anterior —
+  //    so reaproveita se o nome bater com a fonte esperada atual; senao, um arquivo antigo
+  //    lembrado de antes de uma troca de fonte (ex.: Banco de Dados_Faturamento.xlsx) seria
+  //    reusado silenciosamente e geraria 0 linhas (nenhuma aba bate com a fonte nova).
   if (!file && window.__fsHandle){
     try {
       const perm = await window.__fsHandle.requestPermission({ mode:'read' });
       if (perm === 'granted'){
-        file = await window.__fsHandle.getFile();
-        log('Reutilizando arquivo selecionado anteriormente: '+file.name, 'ok');
+        const remembered = await window.__fsHandle.getFile();
+        if (remembered.name === SOURCE_FILENAME){
+          file = remembered;
+          log('Reutilizando arquivo selecionado anteriormente: '+file.name, 'ok');
+        } else {
+          log('Arquivo lembrado ("'+remembered.name+'") nao e mais a fonte esperada ("'+SOURCE_FILENAME+'") — sera pedida uma nova selecao.');
+          window.__fsHandle = null;
+        }
       }
     } catch(e){}
   }
@@ -1108,6 +1117,13 @@ function processBuffer(buffer, fileName, btn){
       log('Dados processados localmente com sucesso.', 'ok');
       worker.terminate();
       (async () => {
+        if (msg.meta.usedRows === 0){
+          log('Nenhuma linha valida encontrada — arquivo/aba errados? Publicacao no Supabase cancelada para nao apagar a base atual.', 'err');
+          toast('0 linhas processadas — nada foi publicado (a base atual no Supabase continua intacta). Confira se selecionou o arquivo certo.', true);
+          btn.disabled = false;
+          setTimeout(hideProgress, 2000);
+          return;
+        }
         if (state.user){
           try {
             await publishToSupabase(state.consolidado, fileName, msg.meta.usedRows);
