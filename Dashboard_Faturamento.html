@@ -482,7 +482,15 @@ self.onmessage = function(ev){
     const map = new Map();
     let totalRows = 0, usedRows = 0;
 
-    wb.SheetNames.forEach(function(sheetName, sIdx){
+    // Usa as chaves reais de wb.Sheets (nao wb.SheetNames) para abrir cada planilha: em
+    // alguns arquivos, um nome de aba com caracteres especiais (ex.: "&") aparece em
+    // wb.SheetNames mas wb.Sheets[nome] retorna undefined por uma inconsistencia de
+    // decodificacao no SheetJS — usar as proprias chaves de wb.Sheets evita esse problema.
+    const sheetKeys = Object.keys(wb.Sheets);
+    if (sheetKeys.length !== wb.SheetNames.length){
+      post('log', 'Aviso: ' + wb.SheetNames.length + ' aba(s) listada(s) pelo arquivo, mas ' + sheetKeys.length + ' com conteudo acessivel.');
+    }
+    sheetKeys.forEach(function(sheetName){
       const normName = normSheetName(sheetName);
       if (!SHEET_NAME_MUST_CONTAIN.every(function(p){ return normName.indexOf(p) !== -1; })){
         post('log', 'Planilha "' + sheetName + '" ignorada (nao corresponde a aba de origem esperada).');
@@ -490,7 +498,7 @@ self.onmessage = function(ev){
       }
       post('log', 'Planilha "' + sheetName + '" corresponde a aba de origem — iniciando leitura...');
       const sheet = wb.Sheets[sheetName];
-      if (!sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia — ignorada.'); return; }
+      if (!sheet || !sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia ou inacessivel — ignorada.'); return; }
       const range = XLSX.utils.decode_range(sheet['!ref']);
       const headerRow = range.s.r;
       post('log', 'Faixa da planilha: linhas ' + range.s.r + '-' + range.e.r + ', colunas ' + range.s.c + '-' + range.e.c + '. Verificando cabecalho na coluna ' + XLSX.utils.encode_col(COL.contrato) + '...');
