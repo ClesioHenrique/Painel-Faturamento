@@ -454,16 +454,25 @@ const FADFIARAT_LABEL = { FAD:'FAD', FIA:'FIA', RAT:'Rateio' };
 function normSheetName(s){
   return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
 }
-function cellText(sheet, r, c){
+function getCell(sheet, r, c){
+  // Modo "dense" (mais leve em memoria, necessario para a aba FAD_FIA & RATEIO,
+  // grande demais para o modo esparso padrao nao estourar a memoria do Worker):
+  // as celulas ficam em sheet['!data'][linha][coluna], nao em sheet['A1'].
+  if (sheet['!data']){
+    const row = sheet['!data'][r];
+    return row ? row[c] : undefined;
+  }
   const addr = XLSX.utils.encode_cell({r:r,c:c});
-  const cell = sheet[addr];
+  return sheet[addr];
+}
+function cellText(sheet, r, c){
+  const cell = getCell(sheet, r, c);
   if (!cell) return '';
   if (cell.w !== undefined && cell.w !== null) return String(cell.w).trim();
   return String(cell.v==null?'':cell.v).trim();
 }
 function cellNumber(sheet, r, c){
-  const addr = XLSX.utils.encode_cell({r:r,c:c});
-  const cell = sheet[addr];
+  const cell = getCell(sheet, r, c);
   if (!cell) return 0;
   if (typeof cell.v === 'number') return cell.v;
   const n = parseFloat(String(cell.v).replace(/\\\\./g,'').replace(',','.'));
@@ -475,7 +484,7 @@ self.onmessage = function(ev){
     const { buffer, fileName } = ev.data;
     post('log', 'Lendo arquivo binario (' + fileName + ')...');
     post('progress', 8);
-    const wb = XLSX.read(buffer, { type:'array' });
+    const wb = XLSX.read(buffer, { type:'array', dense:true });
     post('log', 'Arquivo interpretado. ' + wb.SheetNames.length + ' planilha(s) encontrada(s): ' + wb.SheetNames.join(', '));
     post('progress', 18);
 
