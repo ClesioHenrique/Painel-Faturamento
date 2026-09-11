@@ -445,7 +445,12 @@ const esc = s => String(s==null?'':s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':
    WORKER — leitura e consolidacao do arquivo (thread separada)
    ============================================================ */
 const WORKER_SRC = `
-importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
+/* Leitor de .xlsx proprio (ZIP + XML por regex), sem depender do SheetJS: a aba
+   FAD_FIA & RATEIO tem ~363 mil linhas x 30 colunas (~11 milhoes de celulas) e
+   monta uma arvore DOM ou um workbook inteiro nesse tamanho estoura a memoria do
+   Worker. Este leitor streama linha a linha direto do XML, sem materializar a
+   planilha inteira em memoria — mesma tecnica ja validada no Painel de Medicao
+   e Faturamento para esta mesma aba. */
 
 const COL = ${JSON.stringify(COL)};
 const SHEET_NAME_MUST_CONTAIN = ${JSON.stringify(SHEET_NAME_MUST_CONTAIN)};
@@ -454,103 +459,220 @@ const FADFIARAT_LABEL = { FAD:'FAD', FIA:'FIA', RAT:'Rateio' };
 function normSheetName(s){
   return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
 }
-function getCell(sheet, r, c){
-  // Modo "dense" (mais leve em memoria, necessario para a aba FAD_FIA & RATEIO,
-  // grande demais para o modo esparso padrao nao estourar a memoria do Worker):
-  // as celulas ficam em sheet['!data'][linha][coluna], nao em sheet['A1'].
-  if (sheet['!data']){
-    const row = sheet['!data'][r];
-    return row ? row[c] : undefined;
-  }
-  const addr = XLSX.utils.encode_cell({r:r,c:c});
-  return sheet[addr];
+function decodeXmlEntities(s){
+  return s.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&amp;/g,'&');
 }
-function cellText(sheet, r, c){
-  const cell = getCell(sheet, r, c);
-  if (!cell) return '';
-  if (cell.w !== undefined && cell.w !== null) return String(cell.w).trim();
-  return String(cell.v==null?'':cell.v).trim();
+function extractAllText(s){
+  var out = '', re = /<t[^>]*>([\\s\\S]*?)<\\/t>/g, m;
+  while ((m = re.exec(s))){ out += decodeXmlEntities(m[1]); }
+  return out;
 }
-function cellNumber(sheet, r, c){
-  const cell = getCell(sheet, r, c);
-  if (!cell) return 0;
-  if (typeof cell.v === 'number') return cell.v;
-  const n = parseFloat(String(cell.v).replace(/\\\\./g,'').replace(',','.'));
-  return isNaN(n) ? 0 : n;
+function getAttr(tagText, name){
+  const m = tagText.match(new RegExp(name + '="([^"]*)"'));
+  return m ? decodeXmlEntities(m[1]) : null;
 }
 
-self.onmessage = function(ev){
+/* ---- ZIP (central directory + local headers), suporta store e deflate-raw ---- */
+function readEOCD(buf){
+  const view = new DataView(buf), len = buf.byteLength, minPos = Math.max(0, len - 65557);
+  for (let i = len - 22; i >= minPos; i--){
+    if (view.getUint32(i, true) === 0x06054b50){
+      return { entryCount: view.getUint16(i+10, true), cdOffset: view.getUint32(i+16, true) };
+    }
+  }
+  throw new Error('Arquivo nao parece ser um .xlsx valido (fim de diretorio ZIP nao encontrado).');
+}
+function readCentralDirectory(buf, eocd){
+  const view = new DataView(buf), bytes = new Uint8Array(buf), dec = new TextDecoder('utf-8');
+  const entries = []; let pos = eocd.cdOffset;
+  for (let i=0; i<eocd.entryCount; i++){
+    if (view.getUint32(pos, true) !== 0x02014b50) break;
+    const compMethod = view.getUint16(pos+10, true), compSize = view.getUint32(pos+20, true);
+    const nameLen = view.getUint16(pos+28, true), extraLen = view.getUint16(pos+30, true), commentLen = view.getUint16(pos+32, true);
+    const localOffset = view.getUint32(pos+42, true), name = dec.decode(bytes.subarray(pos+46, pos+46+nameLen));
+    entries.push({ name, compMethod, compSize, localOffset });
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return entries;
+}
+async function inflateRaw(bytes){
+  const ds = new DecompressionStream('deflate-raw');
+  const stream = new Blob([bytes]).stream().pipeThrough(ds);
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+async function readZipEntry(buf, entry){
+  const view = new DataView(buf), bytes = new Uint8Array(buf);
+  const nameLen = view.getUint16(entry.localOffset+26, true), extraLen = view.getUint16(entry.localOffset+28, true);
+  const dataStart = entry.localOffset + 30 + nameLen + extraLen;
+  const raw = bytes.subarray(dataStart, dataStart + entry.compSize);
+  const outBytes = entry.compMethod === 0 ? raw : await inflateRaw(raw);
+  return new TextDecoder('utf-8').decode(outBytes);
+}
+
+/* ---- planilhas do workbook: nome -> caminho interno (xl/worksheets/sheetN.xml) ---- */
+function listWorkbookSheets(wbXml, relsXml){
+  const ridToTarget = {};
+  const relRe = /<Relationship\\b[^>]*\\/>/g;
+  let rm;
+  while ((rm = relRe.exec(relsXml))){
+    const id = getAttr(rm[0], 'Id'), target = getAttr(rm[0], 'Target');
+    if (id && target) ridToTarget[id] = target;
+  }
+  const sheets = [];
+  const sheetRe = /<sheet\\b[^>]*\\/>/g;
+  let sm;
+  while ((sm = sheetRe.exec(wbXml))){
+    const name = getAttr(sm[0], 'name');
+    const rid = getAttr(sm[0], 'r:id') || getAttr(sm[0], 'relationships/id');
+    const target = rid ? ridToTarget[rid] : null;
+    if (name && target){
+      const path = target.indexOf('/') === 0 ? target.slice(1) : ('xl/' + target.replace(/^\\.\\//,''));
+      sheets.push({ name, path });
+    }
+  }
+  return sheets;
+}
+
+/* ---- linhas/celulas por regex, streaming direto do texto XML (sem montar DOM) ---- */
+const ROW_RE = /<row\\b[^>]*>([\\s\\S]*?)<\\/row>/g;
+const CELL_RE = /<c\\b([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/g;
+const REF_RE = /\\br="([A-Z]+)\\d+"/;
+const TYPE_RE = /\\bt="([a-zA-Z]+)"/;
+const V_RE = /<v[^>]*>([\\s\\S]*?)<\\/v>/;
+function colLetterToIndex(letters){
+  let n = 0;
+  for (let i=0; i<letters.length; i++){ n = n*26 + (letters.charCodeAt(i)-64); }
+  return n-1;
+}
+function parseRowCells(rowInner, sharedStrings){
+  const rowArr = [];
+  CELL_RE.lastIndex = 0;
+  let cellMatch, autoIdx = 0;
+  while ((cellMatch = CELL_RE.exec(rowInner))){
+    const attrs = cellMatch[1], inner = cellMatch[2] || '';
+    const refM = attrs.match(REF_RE);
+    const idx = refM ? colLetterToIndex(refM[1]) : autoIdx;
+    autoIdx = idx + 1;
+    const typeM = attrs.match(TYPE_RE);
+    const t = typeM ? typeM[1] : 'n';
+    let val = null;
+    if (t === 's'){
+      const vM = inner.match(V_RE);
+      if (vM){ const si = parseInt(vM[1],10); val = sharedStrings[si] !== undefined ? sharedStrings[si] : ''; }
+    } else if (t === 'inlineStr'){
+      val = extractAllText(inner);
+    } else if (t === 'str'){
+      const vM2 = inner.match(V_RE); val = vM2 ? decodeXmlEntities(vM2[1]) : '';
+    } else if (t === 'b'){
+      const vM3 = inner.match(V_RE); val = vM3 ? (vM3[1] === '1') : false;
+    } else if (t !== 'e'){
+      const vM4 = inner.match(V_RE); val = vM4 ? parseFloat(vM4[1]) : null;
+    }
+    rowArr[idx] = val;
+  }
+  return rowArr;
+}
+function cellStr(rowArr, c){
+  const v = rowArr[c];
+  return (v===null||v===undefined) ? '' : String(v).trim();
+}
+function cellNum(rowArr, c){
+  const v = rowArr[c];
+  return (typeof v === 'number') ? v : 0;
+}
+function parseSharedStrings(xmlText){
+  if (!xmlText) return [];
+  const out = [], re = /<si\\b[^>]*>([\\s\\S]*?)<\\/si>/g;
+  let m;
+  while ((m = re.exec(xmlText))){ out.push(extractAllText(m[1])); }
+  return out;
+}
+
+self.onmessage = async function(ev){
   try {
     const { buffer, fileName } = ev.data;
     post('log', 'Lendo arquivo binario (' + fileName + ')...');
+    post('progress', 4);
+    const eocd = readEOCD(buffer);
+    const entries = readCentralDirectory(buffer, eocd);
+    const byName = {}; entries.forEach(e => { byName[e.name] = e; });
     post('progress', 8);
-    const wb = XLSX.read(buffer, { type:'array', dense:true });
-    post('log', 'Arquivo interpretado. ' + wb.SheetNames.length + ' planilha(s) encontrada(s): ' + wb.SheetNames.join(', '));
-    post('progress', 18);
+
+    const wbXml = await readZipEntry(buffer, byName['xl/workbook.xml']);
+    const relsXml = await readZipEntry(buffer, byName['xl/_rels/workbook.xml.rels']);
+    const sheets = listWorkbookSheets(wbXml, relsXml);
+    post('log', 'Arquivo interpretado. ' + sheets.length + ' planilha(s) encontrada(s): ' + sheets.map(s=>s.name).join(', '));
+
+    const target = sheets.find(function(s){
+      const n = normSheetName(s.name);
+      return SHEET_NAME_MUST_CONTAIN.every(function(p){ return n.indexOf(p) !== -1; });
+    });
+    if (!target) throw new Error('Nenhuma planilha corresponde a aba de origem esperada (procurando por: ' + SHEET_NAME_MUST_CONTAIN.join(' + ') + ').');
+    sheets.forEach(function(s){ if (s !== target) post('log', 'Planilha "' + s.name + '" ignorada (nao corresponde a aba de origem esperada).'); });
+    post('log', 'Planilha "' + target.name + '" corresponde a aba de origem — iniciando leitura...');
+    if (!byName[target.path]) throw new Error('Planilha "' + target.name + '" nao encontrada dentro do arquivo (caminho ' + target.path + ').');
+    post('progress', 12);
+
+    let sharedStrings = [];
+    if (byName['xl/sharedStrings.xml']){
+      const ssXml = await readZipEntry(buffer, byName['xl/sharedStrings.xml']);
+      sharedStrings = parseSharedStrings(ssXml);
+    }
+    post('progress', 20);
+
+    const sheetXml = await readZipEntry(buffer, byName[target.path]);
+    post('log', 'XML da planilha carregado (' + Math.round(sheetXml.length/1e6) + ' milhoes de caracteres). Processando linhas...');
+    post('progress', 28);
 
     const map = new Map();
-    let totalRows = 0, usedRows = 0;
-
-    // Usa as chaves reais de wb.Sheets (nao wb.SheetNames) para abrir cada planilha: em
-    // alguns arquivos, um nome de aba com caracteres especiais (ex.: "&") aparece em
-    // wb.SheetNames mas wb.Sheets[nome] retorna undefined por uma inconsistencia de
-    // decodificacao no SheetJS — usar as proprias chaves de wb.Sheets evita esse problema.
-    const sheetKeys = Object.keys(wb.Sheets);
-    if (sheetKeys.length !== wb.SheetNames.length){
-      post('log', 'Aviso: ' + wb.SheetNames.length + ' aba(s) listada(s) pelo arquivo, mas ' + sheetKeys.length + ' com conteudo acessivel.');
+    let totalRows = 0, usedRows = 0, rowIdx = 0, headerLogged = false;
+    ROW_RE.lastIndex = 0;
+    let rowMatch;
+    while ((rowMatch = ROW_RE.exec(sheetXml))){
+      rowIdx++;
+      if (rowIdx === 1){
+        const headerCells = parseRowCells(rowMatch[1], sharedStrings);
+        const contratoHeader = cellStr(headerCells, COL.contrato);
+        if (!contratoHeader) throw new Error('Planilha "' + target.name + '" nao possui cabecalho reconhecivel na coluna esperada de Contrato.');
+        post('log', 'Cabecalho encontrado: "' + contratoHeader + '". Amostra sera exibida na 1a linha de dados.');
+        continue;
+      }
+      totalRows++;
+      const cells = parseRowCells(rowMatch[1], sharedStrings);
+      const contrato = cellStr(cells, COL.contrato);
+      if (!headerLogged && totalRows === 1){
+        post('log', 'Amostra da 1a linha de dados: contrato="' + contrato + '" item="' + cellStr(cells,COL.item) + '" valor="' + cellStr(cells,COL.valor) + '" mesano="' + cellStr(cells,COL.mesano) + '".');
+        headerLogged = true;
+      }
+      if (!contrato) continue;
+      const fornecedor = cellStr(cells, COL.fornecedor);
+      const item = cellStr(cells, COL.item);
+      const tipo = cellStr(cells, COL.tipo);
+      const projeto = cellStr(cells, COL.projeto);
+      const mesano = cellStr(cells, COL.mesano);
+      const faturado = cellStr(cells, COL.faturado);
+      const fadfiaratRaw = cellStr(cells, COL.fadfiarat);
+      const fadfiarat = FADFIARAT_LABEL[fadfiaratRaw] || fadfiaratRaw || '(nao informado)';
+      const valor = cellNum(cells, COL.valor);
+      const key = contrato+'|'+fornecedor+'|'+item+'|'+tipo+'|'+projeto+'|'+mesano+'|'+faturado+'|'+fadfiarat;
+      let entry = map.get(key);
+      if (!entry) { entry = { contrato, fornecedor, item, tipo, projeto, mesano, faturado, fadfiarat, valor:0, qtd:0 }; map.set(key, entry); }
+      entry.valor += valor;
+      entry.qtd += 1;
+      usedRows++;
+      if (totalRows % 20000 === 0){
+        const pct = 28 + Math.round((ROW_RE.lastIndex / sheetXml.length) * 65);
+        post('progress', Math.min(pct, 93));
+        post('log', 'Processando linha ' + totalRows.toLocaleString('pt-BR') + '...');
+      }
     }
-    sheetKeys.forEach(function(sheetName){
-      const normName = normSheetName(sheetName);
-      if (!SHEET_NAME_MUST_CONTAIN.every(function(p){ return normName.indexOf(p) !== -1; })){
-        post('log', 'Planilha "' + sheetName + '" ignorada (nao corresponde a aba de origem esperada).');
-        return;
-      }
-      post('log', 'Planilha "' + sheetName + '" corresponde a aba de origem — iniciando leitura...');
-      const sheet = wb.Sheets[sheetName];
-      if (!sheet || !sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia ou inacessivel — ignorada.'); return; }
-      const range = XLSX.utils.decode_range(sheet['!ref']);
-      const headerRow = range.s.r;
-      post('log', 'Faixa da planilha: linhas ' + range.s.r + '-' + range.e.r + ', colunas ' + range.s.c + '-' + range.e.c + '. Verificando cabecalho na coluna ' + XLSX.utils.encode_col(COL.contrato) + '...');
-      const contratoHeader = cellText(sheet, headerRow, COL.contrato);
-      if (!contratoHeader) { post('log', 'Planilha "' + sheetName + '" nao possui cabecalho reconhecivel na coluna ' + XLSX.utils.encode_col(COL.contrato) + ' — ignorada.'); return; }
-      post('log', 'Planilha "' + sheetName + '": ' + (range.e.r - range.s.r) + ' linhas x ' + (range.e.c - range.s.c + 1) + ' colunas. Cabecalho encontrado: "' + contratoHeader + '".');
-      post('log', 'Amostra da 1a linha de dados (linha ' + (headerRow+2) + '): contrato="' + cellText(sheet, headerRow+1, COL.contrato) + '" item="' + cellText(sheet, headerRow+1, COL.item) + '" valor="' + cellText(sheet, headerRow+1, COL.valor) + '" mesano="' + cellText(sheet, headerRow+1, COL.mesano) + '".');
 
-      const chunk = 20000;
-      for (let r = headerRow + 1; r <= range.e.r; r++){
-        totalRows++;
-        const contrato = cellText(sheet, r, COL.contrato);
-        if (!contrato) continue;
-        const fornecedor = cellText(sheet, r, COL.fornecedor);
-        const item = cellText(sheet, r, COL.item);
-        const tipo = cellText(sheet, r, COL.tipo);
-        const projeto = cellText(sheet, r, COL.projeto);
-        const mesano = cellText(sheet, r, COL.mesano);
-        const faturado = cellText(sheet, r, COL.faturado);
-        const fadfiaratRaw = cellText(sheet, r, COL.fadfiarat);
-        const fadfiarat = FADFIARAT_LABEL[fadfiaratRaw] || fadfiaratRaw || '(nao informado)';
-        const valor = cellNumber(sheet, r, COL.valor);
-        const key = contrato+'|'+fornecedor+'|'+item+'|'+tipo+'|'+projeto+'|'+mesano+'|'+faturado+'|'+fadfiarat;
-        let entry = map.get(key);
-        if (!entry) { entry = { contrato:contrato, fornecedor:fornecedor, item:item, tipo:tipo, projeto:projeto, mesano:mesano, faturado:faturado, fadfiarat:fadfiarat, valor:0, qtd:0 }; map.set(key, entry); }
-        entry.valor += valor;
-        entry.qtd += 1;
-        usedRows++;
-        if (r % chunk === 0){
-          const pct = 20 + Math.round(((r - headerRow) / (range.e.r - headerRow)) * 65);
-          post('progress', Math.min(pct, 85));
-          post('log', 'Processando linha ' + (r-headerRow).toLocaleString('pt-BR') + ' / ' + (range.e.r-headerRow).toLocaleString('pt-BR') + '...');
-        }
-      }
-    });
-
-    post('progress', 90);
+    post('progress', 96);
     post('log', 'Consolidando ' + map.size.toLocaleString('pt-BR') + ' combinacoes unicas (Contrato+Fornecedor+Item+Tipo+Projeto+Mes/Ano+Faturado)...');
     const consolidado = Array.from(map.values());
-    post('progress', 97);
     post('log', 'Total de linhas lidas: ' + totalRows.toLocaleString('pt-BR') + ' | linhas validas usadas: ' + usedRows.toLocaleString('pt-BR') + '.', 'ok');
     post('progress', 100);
-    self.postMessage({ type:'done', consolidado: consolidado, meta:{ totalRows:totalRows, usedRows:usedRows, sheets:wb.SheetNames } });
+    self.postMessage({ type:'done', consolidado, meta:{ totalRows, usedRows, sheets:[target.name] } });
   } catch(err){
     const detail = (err && err.message) ? err.message : String(err);
     const stack = (err && err.stack) ? (' | ' + err.stack) : '';
@@ -558,7 +680,7 @@ self.onmessage = function(ev){
   }
 };
 
-function post(type, payload){ self.postMessage({ type:type, value:payload }); }
+function post(type, payload, level){ self.postMessage({ type, value:payload, level }); }
 `;
 
 function createWorker(){
