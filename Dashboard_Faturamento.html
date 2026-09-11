@@ -504,7 +504,8 @@ self.onmessage = function(ev){
       post('log', 'Faixa da planilha: linhas ' + range.s.r + '-' + range.e.r + ', colunas ' + range.s.c + '-' + range.e.c + '. Verificando cabecalho na coluna ' + XLSX.utils.encode_col(COL.contrato) + '...');
       const contratoHeader = cellText(sheet, headerRow, COL.contrato);
       if (!contratoHeader) { post('log', 'Planilha "' + sheetName + '" nao possui cabecalho reconhecivel na coluna ' + XLSX.utils.encode_col(COL.contrato) + ' — ignorada.'); return; }
-      post('log', 'Planilha "' + sheetName + '": ' + (range.e.r - range.s.r) + ' linhas x ' + (range.e.c - range.s.c + 1) + ' colunas.');
+      post('log', 'Planilha "' + sheetName + '": ' + (range.e.r - range.s.r) + ' linhas x ' + (range.e.c - range.s.c + 1) + ' colunas. Cabecalho encontrado: "' + contratoHeader + '".');
+      post('log', 'Amostra da 1a linha de dados (linha ' + (headerRow+2) + '): contrato="' + cellText(sheet, headerRow+1, COL.contrato) + '" item="' + cellText(sheet, headerRow+1, COL.item) + '" valor="' + cellText(sheet, headerRow+1, COL.valor) + '" mesano="' + cellText(sheet, headerRow+1, COL.mesano) + '".');
 
       const chunk = 20000;
       for (let r = headerRow + 1; r <= range.e.r; r++){
@@ -1144,7 +1145,7 @@ function processBuffer(buffer, fileName, btn){
           log('Nenhuma linha valida encontrada — arquivo/aba errados? Publicacao no Supabase cancelada para nao apagar a base atual.', 'err');
           toast('0 linhas processadas — nada foi publicado (a base atual no Supabase continua intacta). Confira se selecionou o arquivo certo.', true);
           setUpdateButtonsDisabled(false);
-          setTimeout(hideProgress, 2000);
+          document.getElementById('progress-title').textContent = '0 linhas processadas — veja o log acima para o motivo (o painel nao fecha sozinho desta vez).';
           return;
         }
         if (state.user){
