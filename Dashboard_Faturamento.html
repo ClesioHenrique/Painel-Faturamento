@@ -220,6 +220,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
             </div>
           </div>
           <button class="btn btn-primary" id="btn-refresh">&#8635; Atualizar Base</button>
+          <button class="btn btn-outline" id="btn-pick-file">&#128193; Selecionar Arquivo</button>
           <button class="btn btn-outline" id="btn-export-excel">&#8615; Exportar Excel</button>
           <button class="btn btn-outline" id="btn-export-pdf">&#8615; Exportar PDF</button>
         </div>
@@ -1016,7 +1017,13 @@ async function pickFile(){
   return await pickFileViaInput();
 }
 
-async function refreshBase(){
+function setUpdateButtonsDisabled(disabled){
+  document.getElementById('btn-refresh').disabled = disabled;
+  document.getElementById('btn-pick-file').disabled = disabled;
+}
+
+async function refreshBase(opts){
+  const forcePick = !!(opts && opts.forcePick);
   if (!state.user){
     toast('Faca login para atualizar a base.', true);
     document.getElementById('login-form').style.display = 'flex';
@@ -1024,48 +1031,52 @@ async function refreshBase(){
     return;
   }
   const btn = document.getElementById('btn-refresh');
-  btn.disabled = true;
+  setUpdateButtonsDisabled(true);
   showProgress();
   log('Iniciando atualizacao da base...');
   setProgress(2, 'Localizando arquivo...');
 
   let file = null;
 
-  // 1) tenta localizar automaticamente via fetch relativo (funciona quando o dashboard
-  //    e servido por um servidor local/http; navegadores bloqueiam isso quando o arquivo
-  //    e aberto diretamente via file://)
-  try {
-    log('Procurando automaticamente "'+SOURCE_FILENAME+'" na mesma pasta do dashboard...');
-    const resp = await fetch(SOURCE_FILENAME, { cache:'no-store' });
-    if (resp.ok){
-      const blob = await resp.blob();
-      file = new File([blob], SOURCE_FILENAME);
-      log('Arquivo localizado automaticamente.', 'ok');
-    }
-  } catch(e){ /* esperado falhar quando aberto via file:// */ }
-
-  // 2) tenta reutilizar o identificador de arquivo lembrado de uma atualizacao anterior —
-  //    so reaproveita se o nome bater com a fonte esperada atual; senao, um arquivo antigo
-  //    lembrado de antes de uma troca de fonte (ex.: Banco de Dados_Faturamento.xlsx) seria
-  //    reusado silenciosamente e geraria 0 linhas (nenhuma aba bate com a fonte nova).
-  if (!file && window.__fsHandle){
+  if (forcePick){
+    log('Selecao manual solicitada — abrindo o seletor de arquivos...');
+  } else {
+    // 1) tenta localizar automaticamente via fetch relativo (funciona quando o dashboard
+    //    e servido por um servidor local/http; navegadores bloqueiam isso quando o arquivo
+    //    e aberto diretamente via file://)
     try {
-      const perm = await window.__fsHandle.requestPermission({ mode:'read' });
-      if (perm === 'granted'){
-        const remembered = await window.__fsHandle.getFile();
-        if (remembered.name === SOURCE_FILENAME){
-          file = remembered;
-          log('Reutilizando arquivo selecionado anteriormente: '+file.name, 'ok');
-        } else {
-          log('Arquivo lembrado ("'+remembered.name+'") nao e mais a fonte esperada ("'+SOURCE_FILENAME+'") — sera pedida uma nova selecao.');
-          window.__fsHandle = null;
-        }
+      log('Procurando automaticamente "'+SOURCE_FILENAME+'" na mesma pasta do dashboard...');
+      const resp = await fetch(SOURCE_FILENAME, { cache:'no-store' });
+      if (resp.ok){
+        const blob = await resp.blob();
+        file = new File([blob], SOURCE_FILENAME);
+        log('Arquivo localizado automaticamente.', 'ok');
       }
-    } catch(e){}
+    } catch(e){ /* esperado falhar quando aberto via file:// */ }
+
+    // 2) tenta reutilizar o identificador de arquivo lembrado de uma atualizacao anterior —
+    //    so reaproveita se o nome bater com a fonte esperada atual; senao, um arquivo antigo
+    //    lembrado de antes de uma troca de fonte (ex.: Banco de Dados_Faturamento.xlsx) seria
+    //    reusado silenciosamente e geraria 0 linhas (nenhuma aba bate com a fonte nova).
+    if (!file && window.__fsHandle){
+      try {
+        const perm = await window.__fsHandle.requestPermission({ mode:'read' });
+        if (perm === 'granted'){
+          const remembered = await window.__fsHandle.getFile();
+          if (remembered.name === SOURCE_FILENAME){
+            file = remembered;
+            log('Reutilizando arquivo selecionado anteriormente: '+file.name, 'ok');
+          } else {
+            log('Arquivo lembrado ("'+remembered.name+'") nao e mais a fonte esperada ("'+SOURCE_FILENAME+'") — sera pedida uma nova selecao.');
+            window.__fsHandle = null;
+          }
+        }
+      } catch(e){}
+    }
   }
 
-  // 3) solicita selecao manual (necessario na primeira vez, por seguranca do navegador —
-  //    paginas web nao tem permissao de varrer o disco automaticamente)
+  // 3) solicita selecao manual (necessario na primeira vez e sempre que "Selecionar Arquivo"
+  //    for usado diretamente — paginas web nao tem permissao de varrer o disco automaticamente)
   if (!file){
     log('Nao foi possivel localizar o arquivo automaticamente. Selecione "'+SOURCE_FILENAME+'" na janela que sera aberta.');
     file = await pickFile();
@@ -1073,7 +1084,7 @@ async function refreshBase(){
       log('Selecao cancelada pelo usuario.', 'err');
       toast('Atualizacao cancelada.', true);
       setTimeout(hideProgress, 1500);
-      btn.disabled = false;
+      setUpdateButtonsDisabled(false);
       return;
     }
     log('Arquivo selecionado: '+file.name+' ('+fmtBytes(file.size)+')', 'ok');
@@ -1087,7 +1098,7 @@ async function refreshBase(){
   } catch(e){
     log('Erro ao ler o arquivo: '+e.message, 'err');
     toast('Erro ao ler o arquivo selecionado.', true);
-    btn.disabled = false;
+    setUpdateButtonsDisabled(false);
   }
 }
 
@@ -1103,7 +1114,7 @@ function processBuffer(buffer, fileName, btn){
     else if (msg.type === 'error'){
       log('ERRO: '+msg.value, 'err');
       toast('Erro ao processar a base: '+msg.value, true);
-      btn.disabled = false;
+      setUpdateButtonsDisabled(false);
       worker.terminate();
     } else if (msg.type === 'done'){
       state.consolidado = msg.consolidado;
@@ -1120,7 +1131,7 @@ function processBuffer(buffer, fileName, btn){
         if (msg.meta.usedRows === 0){
           log('Nenhuma linha valida encontrada — arquivo/aba errados? Publicacao no Supabase cancelada para nao apagar a base atual.', 'err');
           toast('0 linhas processadas — nada foi publicado (a base atual no Supabase continua intacta). Confira se selecionou o arquivo certo.', true);
-          btn.disabled = false;
+          setUpdateButtonsDisabled(false);
           setTimeout(hideProgress, 2000);
           return;
         }
@@ -1138,7 +1149,7 @@ function processBuffer(buffer, fileName, btn){
           log('Voce nao esta logado — dados ficam apenas nesta pre-visualizacao local, nao foram publicados no Supabase.');
           toast('Base processada localmente (pre-visualizacao). Faca login para publicar.');
         }
-        btn.disabled = false;
+        setUpdateButtonsDisabled(false);
         setTimeout(hideProgress, 2000);
       })();
     }
@@ -1146,12 +1157,13 @@ function processBuffer(buffer, fileName, btn){
   worker.onerror = err => {
     log('ERRO no processamento: '+err.message, 'err');
     toast('Erro inesperado ao processar a base.', true);
-    btn.disabled = false;
+    setUpdateButtonsDisabled(false);
   };
   worker.postMessage({ buffer, fileName }, [buffer]);
 }
 
-document.getElementById('btn-refresh').addEventListener('click', refreshBase);
+document.getElementById('btn-refresh').addEventListener('click', ()=>refreshBase());
+document.getElementById('btn-pick-file').addEventListener('click', ()=>refreshBase({forcePick:true}));
 
 /* ============================================================
    EXPORTACAO — Excel
@@ -1319,7 +1331,8 @@ document.getElementById('btn-logout').addEventListener('click', async () => {
 
 /* Estado inicial */
 document.getElementById('page-title').childNodes[0].textContent = 'Resumo Executivo ';
-document.getElementById('btn-refresh').title = 'Requer login. Processa um arquivo .xlsx local e publica automaticamente no Supabase para todos verem.';
+document.getElementById('btn-refresh').title = 'Requer login. Tenta localizar o arquivo automaticamente (ou reusa o ultimo selecionado); processa e publica no Supabase para todos verem.';
+document.getElementById('btn-pick-file').title = 'Requer login. Sempre abre o seletor de arquivos — use se a atualizacao automatica pegar o arquivo errado.';
 initAuth();
 loadFromSupabase();
 </script>
