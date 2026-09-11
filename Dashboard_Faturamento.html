@@ -488,12 +488,14 @@ self.onmessage = function(ev){
         post('log', 'Planilha "' + sheetName + '" ignorada (nao corresponde a aba de origem esperada).');
         return;
       }
+      post('log', 'Planilha "' + sheetName + '" corresponde a aba de origem — iniciando leitura...');
       const sheet = wb.Sheets[sheetName];
       if (!sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia — ignorada.'); return; }
       const range = XLSX.utils.decode_range(sheet['!ref']);
       const headerRow = range.s.r;
+      post('log', 'Faixa da planilha: linhas ' + range.s.r + '-' + range.e.r + ', colunas ' + range.s.c + '-' + range.e.c + '. Verificando cabecalho na coluna ' + XLSX.utils.encode_col(COL.contrato) + '...');
       const contratoHeader = cellText(sheet, headerRow, COL.contrato);
-      if (!contratoHeader) { post('log', 'Planilha "' + sheetName + '" nao possui cabecalho reconhecivel na coluna D — ignorada.'); return; }
+      if (!contratoHeader) { post('log', 'Planilha "' + sheetName + '" nao possui cabecalho reconhecivel na coluna ' + XLSX.utils.encode_col(COL.contrato) + ' — ignorada.'); return; }
       post('log', 'Planilha "' + sheetName + '": ' + (range.e.r - range.s.r) + ' linhas x ' + (range.e.c - range.s.c + 1) + ' colunas.');
 
       const chunk = 20000;
@@ -532,7 +534,9 @@ self.onmessage = function(ev){
     post('progress', 100);
     self.postMessage({ type:'done', consolidado: consolidado, meta:{ totalRows:totalRows, usedRows:usedRows, sheets:wb.SheetNames } });
   } catch(err){
-    self.postMessage({ type:'error', message: (err && err.message) ? err.message : String(err) });
+    const detail = (err && err.message) ? err.message : String(err);
+    const stack = (err && err.stack) ? (' | ' + err.stack) : '';
+    self.postMessage({ type:'error', value: detail + stack });
   }
 };
 
