@@ -291,7 +291,7 @@ td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;}
       <section class="panel active" id="panel-resumo">
         <div id="resumo-empty" class="empty-state">
           <div class="big">&#128202;</div>
-          <div>Nenhuma base carregada. Clique em <b>Atualizar Base</b> para localizar e importar o arquivo<br><code>Banco_de_Dados_Faturamento.xlsx</code>.</div>
+          <div>Nenhuma base carregada. Clique em <b>Atualizar Base</b> para localizar e importar o arquivo<br><code>Controle de horas x valores R$_jornal .xlsx</code> (aba "FAD_FIA &amp; RATEIO").</div>
         </div>
         <div id="resumo-body" style="display:none;">
           <div class="kpi-grid" id="kpi-grid"></div>
@@ -401,11 +401,16 @@ window.__DASH_HTML_MARKER__ = true;
 "use strict";
 
 /* ---------------- Constantes de coluna (letras da planilha) ----------------
-   Mapeamento confirmado: Contrato=D, Item=E, Valor Avanco=G, Mes/Ano=H,
-   Projeto=J, Fornecedor=O, Tipo=T, Faturado SIM ou NAO=U
+   Fonte: "Controle de horas x valores R$_jornal .xlsx", aba "FAD_FIA & RATEIO".
+   Mapeamento confirmado (0-indexado, convencao SheetJS): Contrato=I, Item=J,
+   Valor Avanco=L, Mes/Ano=M, FAD_FIA_RAT=N, Projeto=O, Fornecedor=V, Tipo=AA,
+   Faturado SIM ou NAO=AB. So processa a aba cujo nome contenha "fad" e "rateio"
+   (as outras abas da mesma planilha — Extrato SGE, Pendencias, FR'S emitidas —
+   tem layouts completamente diferentes e nao devem ser lidas aqui).
 ------------------------------------------------------------------------- */
-const COL = { contrato:3, item:4, valor:6, mesano:7, fadfiarat:8, projeto:9, fornecedor:14, tipo:19, faturado:20 };
-const SOURCE_FILENAME = 'Banco_de_Dados_Faturamento.xlsx';
+const COL = { contrato:8, item:9, valor:11, mesano:12, fadfiarat:13, projeto:14, fornecedor:21, tipo:26, faturado:27 };
+const SHEET_NAME_MUST_CONTAIN = ['fad','rateio'];
+const SOURCE_FILENAME = 'Controle de horas x valores R$_jornal .xlsx';
 
 /* ---------------- Supabase (leitura publica, somente SELECT) ----------------
    A chave abaixo eh a "anon key" do Supabase: publica por design, protegida por
@@ -442,8 +447,12 @@ const WORKER_SRC = `
 importScripts('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');
 
 const COL = ${JSON.stringify(COL)};
+const SHEET_NAME_MUST_CONTAIN = ${JSON.stringify(SHEET_NAME_MUST_CONTAIN)};
 const FADFIARAT_LABEL = { FAD:'FAD', FIA:'FIA', RAT:'Rateio' };
 
+function normSheetName(s){
+  return String(s||'').normalize('NFD').replace(/[\\u0300-\\u036f]/g,'').toLowerCase();
+}
 function cellText(sheet, r, c){
   const addr = XLSX.utils.encode_cell({r:r,c:c});
   const cell = sheet[addr];
@@ -473,6 +482,11 @@ self.onmessage = function(ev){
     let totalRows = 0, usedRows = 0;
 
     wb.SheetNames.forEach(function(sheetName, sIdx){
+      const normName = normSheetName(sheetName);
+      if (!SHEET_NAME_MUST_CONTAIN.every(function(p){ return normName.indexOf(p) !== -1; })){
+        post('log', 'Planilha "' + sheetName + '" ignorada (nao corresponde a aba de origem esperada).');
+        return;
+      }
       const sheet = wb.Sheets[sheetName];
       if (!sheet['!ref']) { post('log', 'Planilha "' + sheetName + '" vazia — ignorada.'); return; }
       const range = XLSX.utils.decode_range(sheet['!ref']);
